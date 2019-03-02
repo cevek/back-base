@@ -7,6 +7,7 @@ import { config } from './config';
 import { query } from './graphql/implementation';
 import { DBUser } from './db/db.schema';
 import { db } from './db';
+import { ClientError } from './errors';
 // const bundler = new Bundler(__dirname + '/../front/src/index.html', { cache: false });
 // express.use((bundler as any).middleware());
 
@@ -17,12 +18,13 @@ export interface ReqWithUser extends Request {
 }
 
 const express = Express();
+express.disable('x-powered-by');
 express.use(
 	session({
+		name: 'sid',
 		secret: config.secret,
 		resave: true,
 		saveUninitialized: true,
-		cookie: { secure: true },
 	}),
 );
 
@@ -39,13 +41,14 @@ express.get(
 		graphiql: true,
 	}),
 );
+
 express.post(
 	'/api/graphql',
 	graphqlHTTP({
 		schema: schema,
 		rootValue: query,
 		formatError(err) {
-			console.error(err);
+			if (err instanceof ClientError) return err.id;
 			return err;
 		},
 	}),

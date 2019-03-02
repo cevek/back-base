@@ -14,7 +14,7 @@ export function method<Arg, T>(
 	cb: (arg: Arg, user: DBUser | undefined, ctx: ReqWithUser) => Promise<T> | undefined,
 ) {
 	return (args: Arg, ctx?: ReqWithUser) => {
-		const user = ctx!.user;
+		const user = ctx!.session.user;
 		return (cb(args, user, ctx!) as unknown) as T;
 	};
 }
@@ -23,7 +23,7 @@ export function authZone<Arg, T>(
 	cb: (arg: Arg, user: DBUser, ctx: ReqWithUser) => Promise<T> | undefined,
 ) {
 	return (args: Arg, ctx?: ReqWithUser) => {
-		const user = ctx!.user;
+		const user = ctx!.session.user;
 		if (!user) throw new ClientError(Errors.AuthRequired);
 		return (cb(args, user, ctx!) as unknown) as T;
 	};

@@ -1,19 +1,24 @@
+export type UserID = 'UserID';
+export type TodoID = 'TodoID';
+export type TodoListID = 'TodoListID';
+
 export interface DBUser {
-	id: number;
+	id: UserID;
 	login: string;
 	password: string;
-	todoLists: number[];
+	todoLists: TodoListID[];
 }
 
 export interface DBTodo {
-	id: number;
-	todoListId: number;
+	id: TodoID;
+	todoListId: TodoListID;
 	title: string;
 	completed: boolean;
 }
 
 export interface DBTodoList {
-	id: number;
+	id: TodoListID;
+	userId: UserID;
 	title: string;
-	todosIds: number[];
+	todosIds: TodoID[];
 }

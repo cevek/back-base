@@ -1,7 +1,7 @@
 import DataLoader from 'dataloader';
 import { NotFoundError } from '../errors';
 
-async function fetchAllFrom<T>(name: string, ids: (number)[], map: Map<number, T>): Promise<(T)[]> {
+async function fetchAllFrom<T, ID>(name: string, ids: (ID)[], map: Map<ID, T>): Promise<(T)[]> {
 	return ids.map(id => {
 		const row = map.get(id);
 		if (!row) throw new NotFoundError(`${name}:${id} is not found`);
@@ -9,14 +9,15 @@ async function fetchAllFrom<T>(name: string, ids: (number)[], map: Map<number, T
 	});
 }
 
-export function createDBCollection<T>(name: string) {
+export function createDBCollection<T extends { id: any }>(name: string) {
+	type ID = T['id'];
 	let ID = 1;
-	const map = new Map<number, T>();
-	const loader = new DataLoader<number, T>(ids => fetchAllFrom(name, ids, map), {
+	const map = new Map<ID, T>();
+	const loader = new DataLoader<ID, T>(ids => fetchAllFrom(name, ids, map), {
 		cache: false,
 	});
 	return {
-		async findById(id: number) {
+		async findById(id: ID) {
 			return loader.load(id);
 		},
 		async findBy(match: Partial<T>) {
@@ -33,17 +34,18 @@ export function createDBCollection<T>(name: string) {
 			}
 			throw new NotFoundError(`${name}:${JSON.stringify(match)} is not found`);
 		},
-		async create(data: T) {
-			const id = ID++;
-			(data as any).id = id;
-			map.set((data as any).id, data);
-			return id;
+		async create(data: Pick<T, Exclude<keyof T, 'id'>>) {
+			const id = String(ID++) as ID;
+			const dd = data as T;
+			dd.id = id;
+			map.set((data as any).id, dd);
+			return id as ID;
 		},
-		async update(id: number, data: Partial<T>) {
+		async update(id: ID, data: Partial<T>) {
 			const newData = { ...map.get(id)!, ...data };
 			map.set(id, newData);
 		},
-		async remove(id: number) {
+		async remove(id: ID) {
 			return map.delete(id);
 		},
 	};

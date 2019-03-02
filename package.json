@@ -25,6 +25,7 @@
 		"@types/nodemailer": "^4.6.5",
 		"@types/parcel-bundler": "^1.10.1",
 		"@types/passport": "^1.0.0",
+		"@types/request": "^2.48.1",
 		"cors": "^2.8.5",
 		"dataloader": "^1.4.0",
 		"eslint-plugin-typescript": "^0.14.0",
@@ -35,6 +36,7 @@
 		"nodemailer": "^5.1.1",
 		"passport": "^0.4.0",
 		"pm2": "^3.2.9",
+		"request": "^2.88.0",
 		"ts-node": "^7.0.1",
 		"ts2graphql": "^1.0.5",
 		"typescript": "^3.3.0-dev.20190119"

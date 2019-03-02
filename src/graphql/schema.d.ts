@@ -1,6 +1,8 @@
+import { TodoListID, TodoID } from "../db/db.schema";
+
 type Float = number;
 type Int = number;
-type ID = number;
+type ID = string;
 
 export interface Query {
 	getAccount(args: {}): Account;
@@ -13,8 +15,8 @@ interface Mutation {
 	logout(args: {}): boolean;
 
 	createTodoList(args: { title: string }): TodoList;
-	createTodo(args: { todoListId: ID; title: string; completed: boolean }): Todo;
-	updateTodo(args: { id: ID; title: string; completed: boolean }): Todo;
+	createTodo(args: { todoListId: TodoListID; title: string; completed: boolean }): Todo;
+	updateTodo(args: { id: TodoID; title: string; completed: boolean }): Todo;
 }
 
 interface Account {

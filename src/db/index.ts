@@ -1,4 +1,4 @@
-import { DBUser, DBTodoList, DBTodo } from './db.schema';
+import { DBUser, DBTodoList, DBTodo, UserID, TodoListID } from './db.schema';
 import { createDBCollection } from './fakedb';
 
 export const db = {

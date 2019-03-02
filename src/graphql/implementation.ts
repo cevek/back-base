@@ -1,10 +1,9 @@
-import { DBUser } from '../db/db.schema';
+import { DBUser, TodoID, TodoListID } from '../db/db.schema';
 import { ClientError, Errors } from '../errors';
 import { db } from '../db';
 import { Account, Mutation, Query, Todo, TodoList } from './schema';
 import { authZone, method, MutationArg, promiseAll } from './utils';
 import { ReqWithUser } from '..';
-import { promisify } from 'util';
 
 export const query: Query & Mutation = {
 	login: method(login),
@@ -21,7 +20,7 @@ export const query: Query & Mutation = {
 const LOGIN_REGEXP = /^[\w_~;:#$%^&*+=`!()[?.\-\]]{5,30}$/;
 const PASS_REGEXP = /^.{5,128}$/;
 
-async function getTodo(id: number): Promise<Todo> {
+async function getTodo(id: TodoID): Promise<Todo> {
 	const todo = await db.todo.findById(id);
 	return {
 		id: todo.id,
@@ -37,7 +36,7 @@ async function login(
 ): Promise<Account> {
 	if (currUser) throw new ClientError(Errors.YouAreAlreadyLogged);
 	const user = await db.user.findBy({ login: args.login, password: args.password });
-	ctx.session!.user = user;
+	ctx.session.user = user;
 	return getAccount({}, user);
 }
 
@@ -60,7 +59,6 @@ async function register(
 	if (!LOGIN_REGEXP.test(args.login)) throw new ClientError(Errors.ValidationFailed, 'login');
 	if (!PASS_REGEXP.test(args.password)) throw new ClientError(Errors.ValidationFailed, 'password');
 	await db.user.create({
-		id: 0,
 		login: args.login,
 		password: args.password,
 		todoLists: [],
@@ -75,11 +73,11 @@ async function getAccount(args: {}, user: DBUser): Promise<Account> {
 }
 
 async function getTodoLists(args: {}, user: DBUser) {
-	return promiseAll(user.todoLists.map(id => getTodoList(id)));
+	return promiseAll(user.todoLists.map(id => getTodoList(id, user)));
 }
 
-async function getTodoList(id: number): Promise<TodoList> {
-	const todoList = await db.todoList.findById(id);
+async function getTodoList(id: TodoListID, user: DBUser): Promise<TodoList> {
+	const todoList = await db.todoList.findBy({ id: id, userId: user.id });
 	return {
 		id: todoList.id,
 		title: todoList.title,
@@ -87,21 +85,27 @@ async function getTodoList(id: number): Promise<TodoList> {
 	};
 }
 
-async function createTodoList(args: MutationArg<'createTodoList'>) {
-	const id = await db.todoList.create({ id: 0, title: args.title, todosIds: [] });
-	return getTodoList(id);
+async function createTodoList(args: MutationArg<'createTodoList'>, user: DBUser, ctx: ReqWithUser) {
+	const id = await db.todoList.create({
+		userId: user.id,
+		title: args.title,
+		todosIds: [],
+	});
+	await db.user.update(user.id, { todoLists: user.todoLists.concat(id) });
+	ctx.session.user = await db.user.findById(user.id);
+	return getTodoList(id, user);
 }
 
-async function updateTodo(args: MutationArg<'updateTodo'>) {
-	const todo = await db.todoList.findById(args.id);
-	await db.todo.update(todo.id, { completed: args.completed, title: args.title });
-	return getTodo(todo.id);
+async function updateTodo(args: MutationArg<'updateTodo'>, user: DBUser) {
+	const todo = await db.todo.findById(args.id);
+	await db.todoList.findBy({ id: todo.todoListId, userId: user.id });
+	await db.todo.update(args.id, { completed: args.completed, title: args.title });
+	return getTodo(args.id);
 }
 
-async function createTodo(args: MutationArg<'createTodo'>) {
-	const todoList = await db.todoList.findById(args.todoListId);
+async function createTodo(args: MutationArg<'createTodo'>, user: DBUser) {
+	const todoList = await db.todoList.findBy({ id: args.todoListId, userId: user.id });
 	const id = await db.todo.create({
-		id: 0,
 		todoListId: todoList.id,
 		completed: args.completed,
 		title: args.title,
