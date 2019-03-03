@@ -1,8 +1,18 @@
 import { DBUser, DBTodoList, DBTodo, UserID, TodoListID } from './db.schema';
-import { createDBCollection } from './fakedb';
+import { DBCollection } from './fakedb';
 
 export const db = {
-	user: createDBCollection<DBUser>('user'),
-	todoList: createDBCollection<DBTodoList>('todoList'),
-	todo: createDBCollection<DBTodo>('todo'),
+	user: new DBCollection<DBUser>('user'),
+	todoList: new DBCollection<DBTodoList>('todoList'),
+	todo: new DBCollection<DBTodo>('todo'),
 };
+
+export async function dbTransaction<T>(trx: (trx: typeof db) => Promise<T>) {
+	return trx(db);
+}
+
+export function dbClearAll() {
+	db.user.clear();
+	db.todoList.clear();
+	db.todo.clear();
+}

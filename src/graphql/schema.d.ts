@@ -1,4 +1,4 @@
-import { TodoListID, TodoID } from "../db/db.schema";
+import { TodoListID, TodoID } from '../db/db.schema';
 
 type Float = number;
 type Int = number;
@@ -17,6 +17,7 @@ interface Mutation {
 	createTodoList(args: { title: string }): TodoList;
 	createTodo(args: { todoListId: TodoListID; title: string; completed: boolean }): Todo;
 	updateTodo(args: { id: TodoID; title: string; completed: boolean }): Todo;
+	removeTodo(args: { id: TodoID }): boolean;
 }
 
 interface Account {

@@ -5,20 +5,15 @@ import session from 'express-session';
 import { createSchema } from 'ts2graphql';
 import { config } from './config';
 import { query } from './graphql/implementation';
-import { DBUser } from './db/db.schema';
-import { db } from './db';
-import { ClientError } from './errors';
+import { ClientError, Errors } from './errors';
+import { dbClearAll } from './db';
 // const bundler = new Bundler(__dirname + '/../front/src/index.html', { cache: false });
 // express.use((bundler as any).middleware());
 
-export interface ReqWithUser extends Request {
-	session: Request['session'] & {
-		user: DBUser | undefined;
-	};
-}
-
+const PRODUCTION = process.env.NODE_ENV === 'production';
 const express = Express();
 express.disable('x-powered-by');
+
 express.use(
 	session({
 		name: 'sid',
@@ -28,7 +23,7 @@ express.use(
 	}),
 );
 
-if (process.env.NODE_ENV !== 'production') {
+if (!PRODUCTION) {
 	express.use(cors());
 }
 
@@ -48,15 +43,29 @@ express.post(
 		schema: schema,
 		rootValue: query,
 		formatError(err) {
-			if (err instanceof ClientError) return err.id;
+			if (err.originalError) {
+				if (err.originalError instanceof ClientError) return err.originalError.id;
+				/* istanbul ignore next */ else {
+					console.error(err.originalError);
+					return Errors.SomethingWentWrong;
+				}
+			}
+			/* istanbul ignore next */
 			return err;
 		},
 	}),
 );
 
+if (!PRODUCTION) {
+	express.post('/api/clear-fake-db', (req, res, next) => {
+		dbClearAll();
+		next();
+	});
+}
+/* istanbul ignore next */
 express.use((err: any, _: Express.Request, res: Express.Response, _next: Express.NextFunction) => {
 	console.error(err);
-	return res.status(400).send({ status: 'error', error: '' });
+	return res.status(500).send({ status: 'error', error: '' });
 });
 
 express.listen(4000, () =>

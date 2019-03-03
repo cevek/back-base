@@ -3,7 +3,8 @@ export enum Errors {
 	ValidationFailed = 'ValidationFailed',
 	EntityNotFound = 'EntityNotFound',
 	AuthRequired = "AuthRequired",
-	UserAlreadyExists = "UserAlreadyExists"
+	UserAlreadyExists = "UserAlreadyExists",
+	SomethingWentWrong = "SomethingWentWrong"
 }
 
 export class ClientError extends Error {
