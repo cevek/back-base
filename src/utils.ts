@@ -14,7 +14,7 @@ export interface ContextWithUser {
 
 /* istanbul ignore next */
 export function lastItem<T>(arr: ReadonlyArray<T>): T {
-	return arr === undefined || arr.length === 0 ? undefined! : arr[arr.length - 1];
+	return arr.length === 0 ? undefined! : arr[arr.length - 1];
 }
 
 export function removeItem<Arr extends ReadonlyArray<T>, T>(arr: Arr, item: T): Arr {

@@ -3,8 +3,8 @@ import request = require('request');
 export class TestSession {
 	private jar = request.jar();
 	constructor(public port: number) {}
-	async query(query: string, error = '', result?: {}): Promise<any> {
-		const res = await this.req('/api/graphql', { query });
+	async query<T>(query: string, error = '', result?: {}): Promise<T> {
+		const res = await this.req<{data: T, errors: {}[]}>('/api/graphql', { query });
 		const errorMsg = res.errors && res.errors[0];
 		/* istanbul ignore next */
 		if (error) {
@@ -26,12 +26,12 @@ export class TestSession {
         }
         return res.data;
 	}
-	private req(url: string, json: {}) {
-		return new Promise<any>((resolve, reject) =>
+	private req<T>(url: string, json: {}) {
+		return new Promise<T>((resolve, reject) =>
 			request.post(
-				'http://localhost:' + this.port + url,
+				`http://localhost:${this.port}${url}`,
 				{ jar: this.jar, json },
-				(err, res, body) =>
+				(err:{}, res, body: T) =>
 					err
 						? /* istanbul ignore next */
 						  reject(err)

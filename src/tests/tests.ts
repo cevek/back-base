@@ -57,7 +57,7 @@ class Test {
 	}
 
 	async createTodo1() {
-		this.todoId1 = (await this.s.query(
+		this.todoId1 = (await this.s.query<{ createTodo: { id: string } }>(
 			`mutation{createTodo(todoListId:"${
 				this.todoListId
 			}",title:"The wolf of wall street",completed:true){id}}`,
@@ -76,7 +76,7 @@ class Test {
 	}
 
 	async createTodo2() {
-		this.todoId2 = (await this.s.query(
+		this.todoId2 = (await this.s.query<{ createTodo: { id: string } }>(
 			`mutation{createTodo(todoListId:"${this.todoListId}",title:"Alita",completed:false){id}}`,
 		)).createTodo.id;
 		await this.s.query(`query{getTodoLists{title,todos{title,completed}}}`, undefined, {
@@ -93,8 +93,9 @@ class Test {
 	}
 
 	private async createTodoList() {
-		this.todoListId = (await this.s.query(`mutation{createTodoList(title:"Movies"){id}}`))
-			.createTodoList.id as TodoListID;
+		this.todoListId = (await this.s.query<{ createTodoList: { id: string } }>(
+			`mutation{createTodoList(title:"Movies"){id}}`,
+		)).createTodoList.id;
 	}
 
 	async updateTodo2() {
@@ -167,4 +168,4 @@ class Test {
 	}
 }
 
-Promise.all([new Test().test(), new Test().test()]).catch(console.error);
+Promise.all([new Test().test(), new Test().test()]).catch(err => console.error(err));

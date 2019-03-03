@@ -9,13 +9,16 @@ async function fetchAllFrom<T, ID>(name: string, ids: (ID)[], map: Map<ID, T>): 
 	});
 }
 
-export class DBCollection<T extends { id: any }> {
+export class DBCollection<T extends { id: string }> {
 	map = new Map<T['id'], T>();
 	static ID = 1;
 	constructor(public collectionName: string) {}
-	private loader = new DataLoader<T['id'], T>(ids => fetchAllFrom(this.collectionName, ids, this.map), {
-		cache: false,
-	});
+	private loader = new DataLoader<T['id'], T>(
+		ids => fetchAllFrom(this.collectionName, ids, this.map),
+		{
+			cache: false,
+		},
+	);
 	async findById(id: T['id']) {
 		return this.loader.load(id);
 	}
@@ -37,7 +40,7 @@ export class DBCollection<T extends { id: any }> {
 		const id = String(DBCollection.ID++) as T['id'];
 		const dd = data as T;
 		dd.id = id;
-		this.map.set((data as any).id, dd);
+		this.map.set((data as T).id, dd);
 		return id as T['id'];
 	}
 	async update(id: T['id'], data: Partial<T>) {
