@@ -1,12 +1,11 @@
 import { Errors } from '../errors';
 import { TestSession } from './utils';
+import { PORT } from '..';
+import { TodoListID, TodoID } from '../db/db.schema';
 
 class Test {
-	s = new TestSession();
+	s = new TestSession(PORT);
 	async test() {
-		// init app
-		require('..');
-		this.s.init();
 		await this.checkAuthRequiring();
 		await this.register();
 		await this.register(Errors.YouAreAlreadyLogged);
@@ -26,6 +25,15 @@ class Test {
 		process.exit();
 	}
 
+	todoListId = '';
+	todoId1 = '';
+	todoId2 = '';
+	loginStr =
+		'cevek' +
+		Math.random()
+			.toString(33)
+			.substr(3, 10);
+
 	async checkAuthRequiring() {
 		await this.s.query(`query{getAccount{login}}`, Errors.AuthRequired);
 		await this.s.query(`query{getTodoLists{id}}`, Errors.AuthRequired);
@@ -42,80 +50,89 @@ class Test {
 	}
 
 	async register(error?: Errors) {
-		await this.s.query(`mutation{register(login:"cevek",password:"qwerty123"){login}}`, error);
+		await this.s.query(
+			`mutation{register(login:"${this.loginStr}",password:"qwerty123"){login}}`,
+			error,
+		);
 	}
 
 	async createTodo1() {
-		await this.s.query(
-			`mutation{createTodo(todoListId:"1",title:"The wolf of wall street",completed:true){id}}`,
-		);
-		await this.s.query(`query{getAccount{login}}`, undefined, { getAccount: { login: 'cevek' } });
-		await this.s.query(`query{getTodoLists{id,title,todos{id,title,completed}}}`, undefined, {
+		this.todoId1 = (await this.s.query(
+			`mutation{createTodo(todoListId:"${
+				this.todoListId
+			}",title:"The wolf of wall street",completed:true){id}}`,
+		)).createTodo.id;
+		await this.s.query(`query{getAccount{login}}`, undefined, {
+			getAccount: { login: this.loginStr },
+		});
+		await this.s.query(`query{getTodoLists{title,todos{title,completed}}}`, undefined, {
 			getTodoLists: [
 				{
-					id: '1',
 					title: 'Movies',
-					todos: [{ id: '2', title: 'The wolf of wall street', completed: true }],
+					todos: [{ title: 'The wolf of wall street', completed: true }],
+				},
+			],
+		});
+	}
+
+	async createTodo2() {
+		this.todoId2 = (await this.s.query(
+			`mutation{createTodo(todoListId:"${this.todoListId}",title:"Alita",completed:false){id}}`,
+		)).createTodo.id;
+		await this.s.query(`query{getTodoLists{title,todos{title,completed}}}`, undefined, {
+			getTodoLists: [
+				{
+					title: 'Movies',
+					todos: [
+						{ title: 'The wolf of wall street', completed: true },
+						{ title: 'Alita', completed: false },
+					],
 				},
 			],
 		});
 	}
 
 	private async createTodoList() {
-		await this.s.query(`mutation{createTodoList(title:"Movies"){id}}`);
+		this.todoListId = (await this.s.query(`mutation{createTodoList(title:"Movies"){id}}`))
+			.createTodoList.id as TodoListID;
 	}
 
 	async updateTodo2() {
 		await this.s.query(
-			`mutation{updateTodo(id:"3",title:"Alita: battle angel",completed:true){id}}`,
+			`mutation{updateTodo(id:"${this.todoId2}",title:"Alita: battle angel",completed:true){id}}`,
 		);
-		await this.s.query(`query{getTodoLists{id,title,todos{id,title,completed}}}`, undefined, {
+		await this.s.query(`query{getTodoLists{title,todos{title,completed}}}`, undefined, {
 			getTodoLists: [
 				{
-					id: '1',
 					title: 'Movies',
 					todos: [
-						{ id: '2', title: 'The wolf of wall street', completed: true },
-						{ id: '3', title: 'Alita: battle angel', completed: true },
+						{ title: 'The wolf of wall street', completed: true },
+						{ title: 'Alita: battle angel', completed: true },
 					],
 				},
 			],
 		});
 	}
 	async removeTodo1() {
-		await this.s.query(`mutation{removeTodo(id:"2")}`);
-		await this.s.query(`query{getTodoLists{id,title,todos{id,title,completed}}}`, undefined, {
+		await this.s.query(`mutation{removeTodo(id:"${this.todoId1}")}`);
+		await this.s.query(`query{getTodoLists{title,todos{title,completed}}}`, undefined, {
 			getTodoLists: [
 				{
-					id: '1',
 					title: 'Movies',
-					todos: [{ id: '3', title: 'Alita: battle angel', completed: true }],
+					todos: [{ title: 'Alita: battle angel', completed: true }],
 				},
 			],
 		});
 	}
 	async removeNonExistTodo() {
-		await this.s.query(`mutation{removeTodo(id:"100")}`, Errors.EntityNotFound);
-	}
-
-	async createTodo2() {
-		await this.s.query(`mutation{createTodo(todoListId:"1",title:"Alita",completed:false){id}}`);
-		await this.s.query(`query{getTodoLists{id,title,todos{id,title,completed}}}`, undefined, {
-			getTodoLists: [
-				{
-					id: '1',
-					title: 'Movies',
-					todos: [
-						{ id: '2', title: 'The wolf of wall street', completed: true },
-						{ id: '3', title: 'Alita', completed: false },
-					],
-				},
-			],
-		});
+		await this.s.query(`mutation{removeTodo(id:"10024324")}`, Errors.EntityNotFound);
 	}
 
 	async login(error?: Errors) {
-		await this.s.query(`mutation{login(login:"cevek",password:"qwerty123"){login}}`, error);
+		await this.s.query(
+			`mutation{login(login:"${this.loginStr}",password:"qwerty123"){login}}`,
+			error,
+		);
 	}
 	async loginInvariants() {
 		await this.s.query(
@@ -123,7 +140,7 @@ class Test {
 			Errors.EntityNotFound,
 		);
 		await this.s.query(
-			`mutation{login(login:"cevek",password:"qwerty"){login}}`,
+			`mutation{login(login:"${this.loginStr}",password:"qwerty"){login}}`,
 			Errors.EntityNotFound,
 		);
 	}
@@ -132,7 +149,7 @@ class Test {
 	}
 	async registerInvariants() {
 		await this.s.query(
-			`mutation{register(login:"cevek",password:"qwerty123"){login}}`,
+			`mutation{register(login:"${this.loginStr}",password:"qwerty123"){login}}`,
 			Errors.UserAlreadyExists,
 		);
 		await this.s.query(
@@ -150,4 +167,4 @@ class Test {
 	}
 }
 
-new Test().test().catch(console.error);
+Promise.all([new Test().test(), new Test().test()]).catch(console.error);
