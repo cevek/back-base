@@ -10,9 +10,3 @@ export const db = {
 export async function dbTransaction<T>(trx: (trx: typeof db) => Promise<T>) {
 	return trx(db);
 }
-
-export function dbClearAll() {
-	db.user.clear();
-	db.todoList.clear();
-	db.todo.clear();
-}

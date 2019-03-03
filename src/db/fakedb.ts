@@ -16,10 +16,6 @@ export class DBCollection<T extends { id: any }> {
 	private loader = new DataLoader<T['id'], T>(ids => fetchAllFrom(this.collectionName, ids, this.map), {
 		cache: false,
 	});
-	clear() {
-		DBCollection.ID = 0;
-		this.map.clear();
-	}
 	async findById(id: T['id']) {
 		return this.loader.load(id);
 	}
