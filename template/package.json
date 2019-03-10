@@ -1,0 +1,17 @@
+{
+	"name": "project",
+	"private": true,
+	"scripts": {
+		"start": "node src",
+		"debug": "node --inspect-brk src",
+		"test": "node src/tests",
+		"test-debug": "node --inspect-brk src/tests",
+		"coverage": "base coverage npm test",
+		"lint": "base lint"
+	},
+	"dependencies": {
+		"@types/node": ">10.12.18",
+		"ts-node": ">7.0.1",
+		"typescript": ">3.3.0"
+	}
+}

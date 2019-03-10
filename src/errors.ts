@@ -1,20 +1,5 @@
-export enum Errors {
-	YouAreAlreadyLogged = 'YouAreAlreadyLogged',
-	ValidationFailed = 'ValidationFailed',
-	EntityNotFound = 'EntityNotFound',
-	AuthRequired = "AuthRequired",
-	UserAlreadyExists = "UserAlreadyExists",
-	SomethingWentWrong = "SomethingWentWrong"
-}
-
-export class ClientError extends Error {
+export class BaseClientError<Errors> extends Error {
 	constructor(public id: Errors, public msg?: string) {
 		super(`${id}${msg ? `: ${msg}` : ''}`);
-	}
-}
-
-export class NotFoundError extends ClientError {
-	constructor(msg: string) {
-		super(Errors.EntityNotFound, msg);
 	}
 }

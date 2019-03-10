@@ -1,16 +1,4 @@
-import { DBUser } from './db/db.schema';
 
-export interface Context {
-	session: {
-		user: DBUser | undefined;
-	};
-}
-export interface ContextWithUser {
-	session: {
-		user: DBUser;
-		destroy(cb: (err: {}) => void): void;
-	};
-}
 
 /* istanbul ignore next */
 export function lastItem<T>(arr: ReadonlyArray<T>): T {

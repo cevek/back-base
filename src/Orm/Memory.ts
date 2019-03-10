@@ -1,10 +1,12 @@
 import DataLoader from 'dataloader';
-import { NotFoundError } from '../errors';
+import { BaseClientError } from '../errors';
+
+export const ENTITY_NOT_FOUND = 'NOT_FOUND';
 
 async function fetchAllFrom<T, ID>(name: string, ids: (ID)[], map: Map<ID, T>): Promise<(T)[]> {
 	return ids.map(id => {
 		const row = map.get(id);
-		if (!row) throw new NotFoundError(`${name}:${id} is not found`);
+		if (!row) throw new BaseClientError(ENTITY_NOT_FOUND, `${name}:${id} is not found`);
 		return row;
 	});
 }
@@ -34,7 +36,10 @@ export class DBCollection<T extends { id: string }> {
 			}
 			if (found) return row[1];
 		}
-		throw new NotFoundError(`${this.collectionName}:${JSON.stringify(match)} is not found`);
+		throw new BaseClientError(
+			ENTITY_NOT_FOUND,
+			`${this.collectionName}:${JSON.stringify(match)} is not found`,
+		);
 	}
 	async create(data: Pick<T, Exclude<keyof T, 'id'>>) {
 		const id = String(DBCollection.ID++) as T['id'];
