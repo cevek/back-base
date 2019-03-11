@@ -27,7 +27,7 @@ class PostgresqlCollection<T extends { id: string }> implements DBCollection<T> 
 	private name: DBRaw;
 	private loader = new DataLoader<T['id'], T | undefined>(
 		async ids => {
-			const rows = await this.findAll([], { id: { in: ids } } as Where<T>);
+			const rows = await this.findAll({ id: { in: ids } } as Where<T>);
 			const res = (ids.slice() as unknown[]) as (T | undefined)[];
 			for (let i = 0; i < res.length; i++) {
 				res[i] = rows.find(row => row.id === ids[i]);
@@ -44,30 +44,30 @@ class PostgresqlCollection<T extends { id: string }> implements DBCollection<T> 
 		const queryStr = dbQueryToString(query, values);
 		return this.client.query<T>(queryStr, values);
 	}
-	async findById<Keys extends keyof T>(fields: Keys[], id: T['id']) {
-		const row = await this.findByIdOrNull(fields, id);
+	async findById<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
+		const row = await this.findByIdOrNull(id, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(id));
 		return row;
 	}
-	async findOne<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other?: Other<T>) {
-		const row = await this.findOneOrNull(fields, where, other);
+	async findOne<Keys extends keyof T>(where: WhereOr<T>, other?: Other<T, Keys>) {
+		const row = await this.findOneOrNull(where, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(where));
 		return row;
 	}
-	async findAll<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other?: Other<T>) {
+	async findAll<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
 		return this.query<ResultArr<T, Keys>>(
-			query`SELECT ${prepareFields(fields)} FROM ${this.name}${prepareWhereOr(where)}${prepareOther(other)}`,
+			query`SELECT ${prepareFields(other.select)} FROM ${this.name}${prepareWhereOr(where)}${prepareOther(other)}`,
 		);
 	}
-	async findByIdOrNull<Keys extends keyof T>(fields: Keys[], id: T['id']) {
-		if (fields.length === 0) {
+	async findByIdOrNull<Keys extends keyof T>(id: T['id'], other: { select?: Keys[] } = {}) {
+		if (other.select === undefined || other.select.length === 0) {
 			return this.loader.load(id) as Promise<Result<T, Keys> | undefined>;
 		}
-		return this.findOneOrNull(fields, { id } as Where<T>);
+		return this.findOneOrNull({ id } as Where<T>, other);
 	}
-	async findOneOrNull<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other: Other<T> = {}) {
+	async findOneOrNull<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
 		other.limit = 1;
-		const rows = await this.findAll(fields, where, other);
+		const rows = await this.findAll(where, other);
 		return rows.length > 0 ? (rows[0] as Result<T, Keys>) : undefined;
 	}
 	async update(id: T['id'], data: Partial<T>) {
@@ -139,8 +139,8 @@ function queryFactory(client: DBClient) {
 	};
 }
 
-function prepareFields(fields: (string | number | symbol)[]) {
-	return new DBRaw(fields.length > 0 ? fields.join(', ') : '*');
+function prepareFields(fields: ReadonlyArray<string | number | symbol> | undefined) {
+	return new DBRaw(fields !== undefined && fields.length > 0 ? fields.join(', ') : '*');
 }
 
 function prepareWhereOr(where: WhereOr<{ id: string }>) {
@@ -245,7 +245,7 @@ function handleOperator(field: DBRaw, op: keyof Required<AllOperators>, operator
 	}
 }
 
-function prepareOther<T>(other: Other<T> | undefined) {
+function prepareOther<T>(other: Other<T, keyof T> | undefined) {
 	if (!other) return query``;
 	const queries: DBQuery[] = [];
 	if (other.order) {

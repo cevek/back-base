@@ -43,7 +43,7 @@ const PASS_REGEXP = /^.{5,128}$/;
 
 async function login(args: Params['login'], ctx: Context) {
     if (ctx.session.user) throw new ClientError(Errors.YouAreAlreadyLogged);
-    const user = await db.user.findOne([], {
+    const user = await db.user.findOne({
         login: args.login,
         password: args.password,
     });
@@ -60,7 +60,7 @@ async function register(args: Params['register'], ctx: Context) {
     if (ctx.session.user) throw new ClientError(Errors.YouAreAlreadyLogged);
     let userExist;
     try {
-        userExist = await db.user.findOne([], {login: args.login});
+        userExist = await db.user.findOne({login: args.login});
     } catch (e) {}
     if (userExist) throw new ClientError(Errors.UserAlreadyExists);
     if (!LOGIN_REGEXP.test(args.login)) throw new ClientError(Errors.ValidationFailed, 'login');
@@ -94,21 +94,21 @@ async function createTodoList(args: Params['createTodoList'], ctx: ContextWithUs
         todosIds: [],
     });
     await db.user.update(user.id, {todoLists: user.todoLists.concat(id)});
-    ctx.session.user = await db.user.findById([], user.id);
+    ctx.session.user = await db.user.findById(user.id);
     return getTodoList(id, ctx);
 }
 
 async function updateTodo(args: Params['updateTodo'], ctx: ContextWithUser) {
-    const todo = await db.todo.findById([], args.id);
-    await db.todoList.findOne([], {id: todo.todoListId, userId: ctx.session.user.id});
+    const todo = await db.todo.findById(args.id);
+    await db.todoList.findOne({id: todo.todoListId, userId: ctx.session.user.id});
     await db.todo.update(args.id, {completed: args.completed, title: args.title});
     return getTodo(args.id);
 }
 
 async function removeTodo(args: Params['removeTodo'], ctx: ContextWithUser) {
     await db.transaction(async trx => {
-        const todo = await trx.todo.findById([], args.id);
-        const todoList = await trx.todoList.findOne([], {
+        const todo = await trx.todo.findById(args.id);
+        const todoList = await trx.todoList.findOne({
             id: todo.todoListId,
             userId: ctx.session.user.id,
         });
@@ -121,7 +121,7 @@ async function removeTodo(args: Params['removeTodo'], ctx: ContextWithUser) {
 }
 
 async function createTodo(args: Params['createTodo'], ctx: ContextWithUser) {
-    const todoList = await db.todoList.findOne([], {id: args.todoListId, userId: ctx.session.user.id});
+    const todoList = await db.todoList.findOne({id: args.todoListId, userId: ctx.session.user.id});
     return await db.transaction(async trx => {
         const id = trx.todo.genId();
         await trx.todo.create({
@@ -136,7 +136,7 @@ async function createTodo(args: Params['createTodo'], ctx: ContextWithUser) {
 }
 
 async function getTodo(id: TodoID): Return<Todo> {
-    const todo = await db.todo.findById([], id);
+    const todo = await db.todo.findById(id);
     return {
         id: todo.id,
         title: todo.title,
@@ -145,7 +145,7 @@ async function getTodo(id: TodoID): Return<Todo> {
 }
 
 async function getTodoList(id: TodoListID, ctx: ContextWithUser): Return<TodoList> {
-    const todoList = await db.todoList.findOne(['id', 'title', 'todosIds', 'userId'], {
+    const todoList = await db.todoList.findOne({
         id: id,
         userId: ctx.session.user.id,
     });

@@ -24,21 +24,17 @@ export class MemoryCollection<T extends { id: string }> implements DBCollection<
 	genId() {
 		return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
 	}
-	async findById<Keys extends keyof T>(fields: Keys[], id: T['id']) {
-		const row = await this.findByIdOrNull(fields, id);
+	async findById<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
+		const row = await this.findByIdOrNull(id, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(id));
 		return row;
 	}
-	async findOne<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other?: Other<T>) {
-		const row = await this.findOneOrNull(fields, where, other);
+	async findOne<Keys extends keyof T>(where: WhereOr<T>, other?: Other<T, Keys>) {
+		const row = await this.findOneOrNull(where, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(where));
 		return row;
 	}
-	async findAll<Keys extends keyof T>(
-		fields: Keys[],
-		where: WhereOr<T>,
-		other?: Other<T>,
-	): Promise<ResultArr<T, Keys>> {
+	async findAll<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
 		// for (const row of this.map) {
 		// 	let found = true;
 		// 	for (const key in match) {
@@ -53,17 +49,17 @@ export class MemoryCollection<T extends { id: string }> implements DBCollection<
 		return ([] as unknown) as ResultArr<T, Keys>;
 	}
 
-	async findByIdOrNull<Keys extends keyof T>(fields: Keys[], id: T['id']) {
+	async findByIdOrNull<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
 		return this.loader.load(id) as Promise<Result<T, Keys> | undefined>;
 	}
-	async findOneOrNull<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other: Other<T> = {}) {
+	async findOneOrNull<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
 		other.limit = 1;
-		const rows = await this.findAll(fields, where, other);
+		const rows = await this.findAll(where, other);
 		return rows.length > 0 ? (rows[0] as Result<T, Keys>) : undefined;
 	}
 
 	async update(id: T['id'], data: Partial<T>) {
-		const item = await this.findById([], id);
+		const item = await this.findById(id);
 		const newData = { ...item, ...data };
 		this.map.set(id, newData);
 	}

@@ -20,16 +20,15 @@ export type Result<T, Keys extends keyof T> = [Keys] extends [never] ? T : Pick<
 export type ResultArr<T, Keys extends keyof T> = [Keys] extends [never] ? T[] : Pick<T, Keys>[];
 export interface DBCollection<T extends { id: string }> {
 	genId(): T['id'];
-	findById<Keys extends keyof T>(fields: Keys[], id: T['id']): Promise<Result<T, Keys>>;
-	findOne<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other?: Other<T>): Promise<Result<T, Keys>>;
-	findAll<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other?: Other<T>): Promise<ResultArr<T, Keys>>;
+	findById<Keys extends keyof T>(id: T['id'], other?: { select?: ReadonlyArray<Keys> }): Promise<Result<T, Keys>>;
+	findOne<Keys extends keyof T>(where: WhereOr<T>, other?: Other<T, Keys>): Promise<Result<T, Keys>>;
+	findAll<Keys extends keyof T>(where: WhereOr<T>, other?: Other<T, Keys>): Promise<ResultArr<T, Keys>>;
 
-	findByIdOrNull<Keys extends keyof T>(fields: Keys[], id: T['id']): Promise<Result<T, Keys> | undefined>;
-	findOneOrNull<Keys extends keyof T>(
-		fields: Keys[],
-		where: WhereOr<T>,
-		other?: Other<T>,
+	findByIdOrNull<Keys extends keyof T>(
+		id: T['id'],
+		other?: { select?: ReadonlyArray<Keys> },
 	): Promise<Result<T, Keys> | undefined>;
+	findOneOrNull<Keys extends keyof T>(where: WhereOr<T>, other?: Other<T, Keys>): Promise<Result<T, Keys> | undefined>;
 
 	update(id: T['id'], data: Partial<T>): Promise<void>;
 	remove(id: T['id']): Promise<void>;
@@ -105,7 +104,8 @@ export type WhereItem<T> = T extends number
 
 export type Where<T> = { [P in keyof T]?: T[P] | WhereItem<T[P]> };
 
-export type Other<T> = {
+export type Other<T, Fields extends keyof T> = {
+	select?: ReadonlyArray<Fields>;
 	order?: { desc?: keyof T; asc?: keyof T };
 	limit?: number;
 	offset?: number;
