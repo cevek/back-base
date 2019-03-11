@@ -120,10 +120,10 @@ export function query(strs: TemplateStringsArray, ...inserts: DBValue[]) {
 }
 
 export class DBQuery {
-	constructor(public parts: ReadonlyArray<string>, public readonly values: DBValue[]) {}
+	constructor(public readonly parts: ReadonlyArray<string>, public readonly values: ReadonlyArray<DBValue>) {}
 }
 export class DBQueries {
-	constructor(public queries: DBQuery[], public separator: string | undefined) {}
+	constructor(public readonly queries: ReadonlyArray<DBQuery>, public readonly separator: string | undefined) {}
 }
 
 export function joinDBQueries(queries: DBQuery[], separator?: string): DBQuery {

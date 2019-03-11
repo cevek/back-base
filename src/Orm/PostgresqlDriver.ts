@@ -271,7 +271,7 @@ function dbQueryToString(dbQuery: DBQuery, values: DBValue[]) {
 				for (let j = 0; j < value.queries.length; j++) {
 					const subQuery = value.queries[j];
 					if (j > 0 && value.separator !== undefined) {
-						queryStr += value.separator;
+						queryStr = queryStr + value.separator;
 					}
 					queryStr = queryStr + dbQueryToString(subQuery, values);
 				}
