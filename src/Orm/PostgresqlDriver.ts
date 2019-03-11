@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import DataLoader from 'dataloader';
 import {
 	AllOperators,
 	DBCollection,
@@ -10,26 +11,43 @@ import {
 	DBQueries,
 	DBQuery,
 	DBRaw,
-	joinQueries,
+	joinDBQueries,
 	Other,
 	query,
 	Where,
 	WhereOr,
 	ResultArr,
 	Result,
+	DBValue,
+	Driver,
+	TransactionType,
 } from './Base';
 
-export class PostgresqlCollection<T extends { id: string }> implements DBCollection<T> {
+class PostgresqlCollection<T extends { id: string }> implements DBCollection<T> {
 	private name: DBRaw;
+	private loader = new DataLoader<T['id'], T | undefined>(
+		async ids => {
+			const rows = await this.findAll([], { id: { in: ids } } as Where<T>);
+			const res = (ids.slice() as unknown[]) as (T | undefined)[];
+			for (let i = 0; i < res.length; i++) {
+				res[i] = rows.find(row => row.id === ids[i]);
+			}
+			return res;
+		},
+		{ cache: false },
+	);
 	constructor(public collectionName: string, private client: DBClient) {
 		this.name = new DBRaw(collectionName);
 	}
 	async query<T>(query: DBQuery) {
-		const q = queryToString(query);
-		return this.client.query<T>(q.query, q.values);
+		const values: DBValue[] = [];
+		const queryStr = dbQueryToString(query, values);
+		return this.client.query<T>(queryStr, values);
 	}
 	async findById<Keys extends keyof T>(fields: Keys[], id: T['id']) {
-		return this.findOne(fields, { id } as Where<T>);
+		const row = await this.findByIdOrNull(fields, id);
+		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(id));
+		return row;
 	}
 	async findOne<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other?: Other<T>) {
 		const row = await this.findOneOrNull(fields, where, other);
@@ -42,6 +60,9 @@ export class PostgresqlCollection<T extends { id: string }> implements DBCollect
 		);
 	}
 	async findByIdOrNull<Keys extends keyof T>(fields: Keys[], id: T['id']) {
+		if (fields.length === 0) {
+			return this.loader.load(id) as Promise<Result<T, Keys> | undefined>;
+		}
 		return this.findOneOrNull(fields, { id } as Where<T>);
 	}
 	async findOneOrNull<Keys extends keyof T>(fields: Keys[], where: WhereOr<T>, other: Other<T> = {}) {
@@ -55,7 +76,7 @@ export class PostgresqlCollection<T extends { id: string }> implements DBCollect
 		for (const key in data) {
 			values.push(query`${new DBRaw(key as string)} = ${(data[key] as unknown) as string}`);
 		}
-		const valueQuery = joinQueries(values, ', ');
+		const valueQuery = joinDBQueries(values, ', ');
 		await this.query(query`UPDATE ${this.name} SET ${valueQuery}${prepareWhereOr({ id: id })}`);
 	}
 	async remove(id: T['id']) {
@@ -69,14 +90,14 @@ export class PostgresqlCollection<T extends { id: string }> implements DBCollect
 			keys.push(key as Keys);
 			values.push(data[key as Keys]);
 		}
-		const keyQuery = joinQueries(keys.map(key => query`${new DBRaw(key as string)}`), ', ');
-		const valueQuery = joinQueries(values.map(val => query`${val as string}`), ', ');
+		const keyQuery = joinDBQueries(keys.map(key => query`${new DBRaw(key as string)}`), ', ');
+		const valueQuery = joinDBQueries(values.map(val => query`${val as string}`), ', ');
 		await this.query(query`INSERT INTO ${this.name} (${keyQuery}) VALUES (${valueQuery})`);
 	}
 	genId() {
 		const b = randomBytes(8);
 		const n =
-			(BigInt(b[0]) << 56n) |
+			(BigInt(b[0] & 0b111_1111) << 56n) | // signed
 			(BigInt(b[1]) << 48n) |
 			(BigInt(b[2]) << 40n) |
 			(BigInt(b[3]) << 32n) |
@@ -88,24 +109,34 @@ export class PostgresqlCollection<T extends { id: string }> implements DBCollect
 	}
 }
 
-export async function postgresqlRunTransaction<T, Schema>(
-	options: DBOptions<Schema>,
-	trx: (trxDB: DBCollections<Schema>) => Promise<T>,
-): Promise<T> {
-	const trxClient = await options.getClient();
-	try {
-		options.client = trxClient;
-		const trxDB = await createDB<Schema>(options);
-		await trxClient.query('BEGIN');
-		const ret = await trx(trxDB);
-		await trxClient.query('COMMIT');
-		return ret;
-	} catch (e) {
-		await trxClient.query('ROLLBACK');
-		throw e;
-	} finally {
-		trxClient.release();
-	}
+function transactionFactory<Schema>(options: DBOptions<Schema>): TransactionType<Schema> {
+	return async (trx, rollback) => {
+		const trxClient = await options.getClient();
+		try {
+			options.client = trxClient;
+			const trxDB = await createDB<Schema>(options);
+			await trxClient.query('BEGIN');
+			const ret = await trx(trxDB);
+			await trxClient.query('COMMIT');
+			return ret;
+		} catch (e) {
+			await trxClient.query('ROLLBACK');
+			if (rollback !== undefined) {
+				await rollback();
+			}
+			throw e;
+		} finally {
+			trxClient.release();
+		}
+	};
+}
+
+function queryFactory(client: DBClient) {
+	return <T>(query: DBQuery) => {
+		const values: DBValue[] = [];
+		const queryStr = dbQueryToString(query, values);
+		return client.query<T>(queryStr, values);
+	};
 }
 
 function prepareFields(fields: (string | number | symbol)[]) {
@@ -115,7 +146,7 @@ function prepareFields(fields: (string | number | symbol)[]) {
 function prepareWhereOr(where: WhereOr<{ id: string }>) {
 	if (Array.isArray(where)) {
 		if (where.length > 0) {
-			return query` WHERE (${joinQueries(where.map(prepareWhere), ') OR (')})`;
+			return query` WHERE (${joinDBQueries(where.map(prepareWhere), ') OR (')})`;
 		}
 		return query``;
 	}
@@ -135,7 +166,7 @@ function prepareWhere(where: Where<{ id: string }>) {
 			queries.push(query`${fieldRaw} = ${operators as string}`);
 		}
 	}
-	return joinQueries(queries, ' AND ');
+	return joinDBQueries(queries, ' AND ');
 }
 
 function handleOperator(field: DBRaw, op: keyof Required<AllOperators>, operators: Required<AllOperators>) {
@@ -223,44 +254,44 @@ function prepareOther<T>(other: Other<T> | undefined) {
 	}
 	if (other.limit !== undefined) queries.push(query` LIMIT ${other.limit}`);
 	if (other.offset !== undefined) queries.push(query` OFFSET ${other.offset}`);
-	return joinQueries(queries);
+	return joinDBQueries(queries);
 }
 
-function queryToString(dbQuery: DBQuery, idx = 1) {
+function dbQueryToString(dbQuery: DBQuery, values: DBValue[]) {
 	let queryStr = '';
-	const values: unknown[] = [];
-	function subQuery(value: DBQuery) {
-		const q = queryToString(value, idx);
-		idx = q.idx;
-		values.push(...q.values);
-		return q.query;
-	}
 	for (let i = 0; i < dbQuery.parts.length; i++) {
-		queryStr += dbQuery.parts[i];
+		queryStr = queryStr + dbQuery.parts[i];
 		if (dbQuery.values.length > i) {
 			const value = dbQuery.values[i];
 			if (value instanceof DBRaw) {
-				queryStr += value.raw;
+				queryStr = queryStr + value.raw;
 			} else if (value instanceof DBQuery) {
-				queryStr += subQuery(value);
+				queryStr = queryStr + dbQueryToString(value, values);
 			} else if (value instanceof DBQueries) {
 				for (let j = 0; j < value.queries.length; j++) {
-					const qq = value.queries[j];
+					const subQuery = value.queries[j];
 					if (j > 0 && value.separator !== undefined) {
 						queryStr += value.separator;
 					}
-					queryStr += subQuery(qq);
+					queryStr = queryStr + dbQueryToString(subQuery, values);
 				}
 			} else {
-				queryStr += '$' + String(idx++);
 				values.push(value);
+				queryStr = queryStr + '$' + String(values.length);
 			}
 		}
 	}
-	return { query: queryStr, values, idx };
+	return queryStr;
 }
 
 /* istanbul ignore next */
 export function never(never?: never): never {
 	throw new Error('Never possible');
 }
+
+const driver: Driver<unknown> = {
+	CollectionClass: PostgresqlCollection,
+	queryFactory: queryFactory,
+	transactionFactory: transactionFactory,
+};
+export default driver;

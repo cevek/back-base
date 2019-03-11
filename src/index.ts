@@ -8,7 +8,7 @@ import { createSchema } from 'ts2graphql';
 import { config } from './config';
 import { BaseClientError } from './errors';
 import { createDB, DB, DBEntityNotFound } from './Orm';
-import { PostgresqlCollection, postgresqlRunTransaction } from './Orm/Postgresql';
+import postresqlDriver from './Orm/PostgresqlDriver';
 
 export { Logger };
 
@@ -55,8 +55,7 @@ export async function createGraphqApp<DBSchema = unknown>(options: {
 		});
 		db = await createDB<DBSchema>({
 			getClient: () => dbPool.connect(),
-			CollectionClass: PostgresqlCollection,
-			runTransaction: postgresqlRunTransaction,
+			driver: postresqlDriver,
 		});
 	}
 	const express = Express();
