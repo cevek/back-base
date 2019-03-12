@@ -122,17 +122,17 @@ async function removeTodo(args: Params['removeTodo'], ctx: ContextWithUser) {
 
 async function createTodo(args: Params['createTodo'], ctx: ContextWithUser) {
     const todoList = await db.todoList.findOne({id: args.todoListId, userId: ctx.session.user.id});
-    return await db.transaction(async trx => {
-        const id = trx.todo.genId();
+    const id = db.todo.genId();
+    await db.transaction(async trx => {
         await trx.todo.create({
-            id: trx.todo.genId(),
+            id: id,
             todoListId: todoList.id,
             completed: args.completed,
             title: args.title,
         });
         await trx.todoList.update(args.todoListId, {todosIds: todoList.todosIds.concat(id)});
-        return getTodo(id);
     });
+    return getTodo(id);
 }
 
 async function getTodo(id: TodoID): Return<Todo> {

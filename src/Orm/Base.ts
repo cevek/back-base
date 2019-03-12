@@ -1,10 +1,10 @@
-export type TransactionType<Schema> = <T>(
-	trx: (db: DBCollections<Schema>) => Promise<T>,
+export type TransactionType<Schema> = (
+	trx: (db: DBCollections<Schema>) => Promise<void>,
 	rollback?: () => Promise<void>,
-) => Promise<T>;
+) => Promise<void>;
 export type DB<Schema> = DBCollections<Schema> & {
 	transaction: TransactionType<Schema>;
-	query<T>(query: DBQuery): Promise<T>;
+	query<T>(query: DBQuery): Promise<T[]>;
 };
 
 export type DBCollections<Schema> = {
@@ -13,7 +13,7 @@ export type DBCollections<Schema> = {
 
 export interface Driver<Schema> {
 	transactionFactory: <Schema>(options: DBOptions<Schema>) => TransactionType<Schema>;
-	CollectionClass: new (name: string, client: DBClient) => DBCollection<{ id: string }>;
+	CollectionClass: new (name: string, client: DBClient, prevCollection: DBCollection<{id: string}> | undefined) => DBCollection<{ id: string }>;
 	queryFactory: (client: DBClient) => <T>(query: DBQuery) => Promise<T>;
 }
 export type Result<T, Keys extends keyof T> = [Keys] extends [never] ? T : Pick<T, Keys>;
@@ -134,24 +134,6 @@ export interface DBOptions<Schema> {
 	getClient: () => Promise<DBClient>;
 	client?: DBClient;
 	driver: Driver<Schema>;
-}
-export async function createDB<Schema>(options: DBOptions<Schema>) {
-	type CollectionType = DB<Schema>[keyof Schema];
-	const db = {} as DB<Schema>;
-	const dbClient = await options.getClient();
-	db.transaction = options.driver.transactionFactory<Schema>(options);
-	db.query = options.driver.queryFactory(dbClient);
-	return new Proxy(db, {
-		get(_, key: keyof Schema) {
-			const collection = db[key] as CollectionType | undefined;
-			if (collection === undefined) {
-				const newCollection = new options.driver.CollectionClass(key as string, dbClient);
-				db[key] = newCollection as CollectionType;
-				return newCollection;
-			}
-			return collection;
-		},
-	});
 }
 
 export class DBEntityNotFound extends Error {

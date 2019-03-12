@@ -1,1 +1,1 @@
-export {query, joinDBQueries as joinQueries, createDB, DB, DBEntityNotFound} from './Base'
+export { query, joinDBQueries, DB, DBEntityNotFound } from './Base';

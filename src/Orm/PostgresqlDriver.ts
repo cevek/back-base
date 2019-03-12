@@ -3,8 +3,6 @@ import DataLoader from 'dataloader';
 import {
 	AllOperators,
 	DBCollection,
-	DBCollections,
-	createDB,
 	DBOptions,
 	DBClient,
 	DBEntityNotFound,
@@ -21,28 +19,31 @@ import {
 	DBValue,
 	Driver,
 	TransactionType,
+	DB,
 } from './Base';
 
-class PostgresqlCollection<T extends { id: string }> implements DBCollection<T> {
+class Collection<T extends { id: string }> implements DBCollection<T> {
 	private name: DBRaw;
-	private loader = new DataLoader<T['id'], T | undefined>(
-		async ids => {
-			const rows = await this.findAll({ id: { in: ids } } as Where<T>);
-			const res = (ids.slice() as unknown[]) as (T | undefined)[];
-			for (let i = 0; i < res.length; i++) {
-				res[i] = rows.find(row => row.id === ids[i]);
-			}
-			return res;
-		},
-		{ cache: false },
-	);
-	constructor(public collectionName: string, private client: DBClient) {
+	private loader: DataLoader<T['id'], T | undefined>;
+	constructor(
+		public collectionName: string,
+		private query: <T>(dbQuery: DBQuery) => Promise<T>,
+		prevCollection: Collection<T> | undefined,
+	) {
 		this.name = new DBRaw(collectionName);
-	}
-	async query<T>(query: DBQuery) {
-		const values: DBValue[] = [];
-		const queryStr = dbQueryToString(query, values);
-		return this.client.query<T>(queryStr, values);
+		this.loader =
+			(prevCollection && prevCollection.loader) ||
+			new DataLoader(
+				async ids => {
+					const rows = await this.findAll({ id: { in: ids } } as Where<T>);
+					const res = (ids.slice() as unknown[]) as (T | undefined)[];
+					for (let i = 0; i < res.length; i++) {
+						res[i] = rows.find(row => row.id === ids[i]);
+					}
+					return res;
+				},
+				{ cache: false },
+			);
 	}
 	async findById<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
 		const row = await this.findByIdOrNull(id, other);
@@ -107,36 +108,6 @@ class PostgresqlCollection<T extends { id: string }> implements DBCollection<T> 
 			(BigInt(b[7]) << 0n);
 		return n.toString() as T['id'];
 	}
-}
-
-function transactionFactory<Schema>(options: DBOptions<Schema>): TransactionType<Schema> {
-	return async (trx, rollback) => {
-		const trxClient = await options.getClient();
-		try {
-			options.client = trxClient;
-			const trxDB = await createDB<Schema>(options);
-			await trxClient.query('BEGIN');
-			const ret = await trx(trxDB);
-			await trxClient.query('COMMIT');
-			return ret;
-		} catch (e) {
-			await trxClient.query('ROLLBACK');
-			if (rollback !== undefined) {
-				await rollback();
-			}
-			throw e;
-		} finally {
-			trxClient.release();
-		}
-	};
-}
-
-function queryFactory(client: DBClient) {
-	return <T>(query: DBQuery) => {
-		const values: DBValue[] = [];
-		const queryStr = dbQueryToString(query, values);
-		return client.query<T>(queryStr, values);
-	};
 }
 
 function prepareFields(fields: ReadonlyArray<string | number | symbol> | undefined) {
@@ -289,9 +260,80 @@ export function never(never?: never): never {
 	throw new Error('Never possible');
 }
 
-const driver: Driver<unknown> = {
-	CollectionClass: PostgresqlCollection,
-	queryFactory: queryFactory,
-	transactionFactory: transactionFactory,
+function queryFactory(getClient: () => Promise<PoolClient>) {
+	return async <T>(query: DBQuery) => {
+		const client = await getClient();
+		const values: DBValue[] = [];
+		const queryStr = dbQueryToString(query, values);
+		const res = await client.query(queryStr, values);
+		return (res.rows as unknown) as T;
+	};
+}
+
+type Pool = {
+	connect: () => Promise<PoolClient>;
 };
-export default driver;
+type PoolClient = { release: () => void; query: (q: string, values?: unknown[]) => Promise<{ rows: unknown }> };
+
+export async function createDB<Schema>(pool: Pool) {
+	type CollectionType = DB<Schema>[keyof Schema];
+	const db = {} as DB<Schema>;
+	db.transaction = async (trx, rollback) => {
+		const trxClient = await pool.connect();
+		try {
+			const trxDB = await createTransaction<Schema>(proxyDB, pool);
+			await trxClient.query('BEGIN');
+			await trx(trxDB);
+			await trxClient.query('COMMIT');
+		} catch (e) {
+			await trxClient.query('ROLLBACK');
+			if (rollback !== undefined) {
+				await rollback();
+			}
+			throw e;
+		} finally {
+			trxClient.release();
+		}
+	};
+	const query = queryFactory(() => pool.connect());
+	db.query = query;
+	const proxyDB = new Proxy(db, {
+		get(_, key: keyof Schema) {
+			const collection = db[key] as CollectionType | undefined;
+			if (collection === undefined) {
+				const newCollection = new Collection(key as string, query, undefined);
+				db[key] = (newCollection as unknown) as CollectionType;
+				return newCollection;
+			}
+			return collection;
+		},
+	});
+	return proxyDB;
+}
+
+async function createTransaction<Schema>(rootDB: DB<Schema>, pool: Pool) {
+	type CollectionType = DB<Schema>[keyof Schema];
+	const db = {} as DB<Schema>;
+	const trxClient = await pool.connect();
+	const query = queryFactory(async () => trxClient);
+	db.query = query;
+	return new Proxy(db, {
+		get(_, key: keyof Schema) {
+			const collection = db[key] as CollectionType | undefined;
+			if (collection === undefined) {
+				const prevCollection = (rootDB[key] as unknown) as Collection<{ id: string }>;
+				const newCollection = new Collection(key as string, query, prevCollection);
+				db[key] = (newCollection as unknown) as CollectionType;
+				return newCollection;
+			}
+			return collection;
+		},
+	});
+}
+
+// const driver: Driver<unknown> = {
+// 	CollectionClass: PostgresqlCollection,
+// 	queryFactory: queryFactory,
+// 	transactionFactory: transactionFactory,
+// };
+// export default driver;

@@ -1,6 +1,5 @@
-import { DBClient, createDB } from './Base';
-
-import postresqlDriver from './PostgresqlDriver';
+import { createDB } from './PostgresqlDriver';
+// import { createDB } from './MemoryDriver';
 
 interface User {
 	id: string;
@@ -11,21 +10,23 @@ interface User {
 
 const perf = false;
 
-const client: DBClient = {
-	query(query, values) {
-		if (!perf) console.log(query, values);
-		return [] as any;
-	},
-	release() {},
-};
-
 interface Schema {
 	users: User;
 }
 async function main() {
+	const client = {
+		async query(query: string, values?: unknown[]) {
+			if (!perf) {
+				console.log(query, values);
+			}
+			return { rows: [] };
+		},
+		release() {},
+	};
 	const db = await createDB<Schema>({
-		getClient: async () => client,
-		driver: postresqlDriver,
+		async connect() {
+			return client;
+		},
 	});
 	const collection = db.users;
 

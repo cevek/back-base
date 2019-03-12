@@ -7,8 +7,9 @@ import { Pool } from 'pg';
 import { createSchema } from 'ts2graphql';
 import { config } from './config';
 import { BaseClientError } from './errors';
-import { createDB, DB, DBEntityNotFound } from './Orm';
-import postresqlDriver from './Orm/PostgresqlDriver';
+import { DB, DBEntityNotFound } from './Orm';
+// import {createDB} from './Orm/PostgresqlDriver';
+import { createDB } from './Orm/MemoryDriver';
 
 export { Logger };
 
@@ -46,17 +47,18 @@ export async function createGraphqApp<DBSchema = unknown>(options: {
 
 	let db: DB<DBSchema> | undefined;
 	if (options.db) {
-		const dbPool = new Pool({
-			password: options.db.password,
-			user: options.db.user,
-			database: options.db.database,
-			host: options.db.host,
-			port: options.db.port,
-		});
-		db = await createDB<DBSchema>({
-			getClient: () => dbPool.connect(),
-			driver: postresqlDriver,
-		});
+		// const dbPool = new Pool({
+		// 	password: options.db.password,
+		// 	user: options.db.user,
+		// 	database: options.db.database,
+		// 	host: options.db.host,
+		// 	port: options.db.port,
+		// });
+		// db = await createDB<DBSchema>({
+		// 	getClient: () => dbPool.connect(),
+		// 	driver: postresqlDriver,
+		// });
+		db = await createDB<DBSchema>();
 	}
 	const express = Express();
 	express.disable('x-powered-by');

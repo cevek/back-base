@@ -1,6 +1,7 @@
 import {Errors} from '../Errors';
 import {config} from '../config';
 import {TestSession} from '../../../base';
+import '../';
 
 class Test {
     s = new TestSession(config.port);

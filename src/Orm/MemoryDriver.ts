@@ -1,26 +1,15 @@
 import DataLoader from 'dataloader';
-import {
-	DBCollection,
-	WhereOr,
-	Other,
-	DBClient,
-	DBEntityNotFound,
-	Result,
-	ResultArr,
-	Driver,
-	DBQuery,
-	DBOptions,
-	DBCollections,
-	createDB,
-	TransactionType,
-} from './Base';
+import { DB, DBCollection, DBEntityNotFound, Other, Result, ResultArr, WhereOr } from './Base';
 
-export class MemoryCollection<T extends { id: string }> implements DBCollection<T> {
-	private map = new Map<T['id'], T>();
-	private loader = new DataLoader<T['id'], T | undefined>(async ids => ids.map(id => this.map.get(id)), {
-		cache: false,
-	});
-	constructor(public collectionName: string, private client: DBClient) {}
+class Collection<T extends { id: string }> implements DBCollection<T> {
+	private map: Map<T['id'], T>;
+	private loader: DataLoader<T['id'], T | undefined>;
+	constructor(public collectionName: string, public prevCollection: Collection<T> | undefined) {
+		this.loader =
+			(prevCollection && prevCollection.loader) ||
+			new DataLoader(async ids => ids.map(id => this.map.get(id)), { cache: false });
+		this.map = (prevCollection && prevCollection.map) || new Map();
+	}
 	genId() {
 		return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
 	}
@@ -35,18 +24,26 @@ export class MemoryCollection<T extends { id: string }> implements DBCollection<
 		return row;
 	}
 	async findAll<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
-		// for (const row of this.map) {
-		// 	let found = true;
-		// 	for (const key in match) {
-		// 		const val = match[key];
-		// 		if (row[1][key] !== val) {
-		// 			found = false;
-		// 			break;
-		// 		}
-		// 	}
-		// 	if (found) return row[1];
-		// }
-		return ([] as unknown) as ResultArr<T, Keys>;
+		function compare(row: T, whereOr: WhereOr<T>): boolean {
+			if (Array.isArray(whereOr)) return whereOr.some(where => compare(row, where));
+			for (const key in whereOr) {
+				const val = whereOr[key];
+				const rowVal = row[key];
+				if (val instanceof Object && !Array.isArray(val)) {
+					throw new Error(`Comparators doesn't support`);
+				} else if (rowVal !== val) {
+					return false;
+				}
+			}
+			return true;
+		}
+		const rows: T[] = [];
+		for (const row of this.map) {
+			if (compare(row[1], where)) {
+				rows.push(row[1]);
+			}
+		}
+		return (rows as unknown) as ResultArr<T, Keys>;
 	}
 
 	async findByIdOrNull<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
@@ -71,20 +68,13 @@ export class MemoryCollection<T extends { id: string }> implements DBCollection<
 	}
 }
 
-function queryFactory(client: DBClient) {
-	return <T>(query: DBQuery) => {
-		throw new Error("Memory driver doesn't support queries");
-	};
-}
-
-function transactionFactory<Schema>(options: DBOptions<Schema>): TransactionType<Schema> {
-	return async (trx, rollback) => {
-		const trxClient = await options.getClient();
+export async function createDB<Schema>() {
+	type CollectionType = DB<Schema>[keyof Schema];
+	const db = {} as DB<Schema>;
+	db.transaction = async (trx, rollback) => {
 		try {
-			options.client = trxClient;
-			const trxDB = await createDB<Schema>(options);
-			const ret = await trx(trxDB);
-			return ret;
+			const trxDB = await createTransaction<Schema>(proxyDB);
+			return await trx(trxDB);
 		} catch (e) {
 			if (rollback !== undefined) {
 				await rollback();
@@ -92,10 +82,37 @@ function transactionFactory<Schema>(options: DBOptions<Schema>): TransactionType
 			throw e;
 		}
 	};
+	db.query = () => {
+		throw new Error('query method is not supported');
+	};
+	const proxyDB = new Proxy(db, {
+		get(_, key: keyof Schema) {
+			const collection = db[key] as CollectionType | undefined;
+			if (collection === undefined) {
+				const newCollection = new Collection(key as string, undefined);
+				db[key] = (newCollection as unknown) as CollectionType;
+				return newCollection;
+			}
+			return collection;
+		},
+	});
+	return proxyDB
 }
-const driver: Driver<unknown> = {
-	CollectionClass: MemoryCollection,
-	queryFactory: queryFactory,
-	transactionFactory: transactionFactory,
-};
-export default driver;
+
+async function createTransaction<Schema>(rootDB: DB<Schema>) {
+	type CollectionType = DB<Schema>[keyof Schema];
+	const db = {} as DB<Schema>;
+	db.query = rootDB.query;
+	return new Proxy(db, {
+		get(_, key: keyof Schema) {
+			const collection = db[key] as CollectionType | undefined;
+			if (collection === undefined) {
+				const prevCollection = (rootDB[key] as unknown) as Collection<{ id: string }>;
+				const newCollection = new Collection(key as string, prevCollection);
+				db[key] = (newCollection as unknown) as CollectionType;
+				return newCollection;
+			}
+			return collection;
+		},
+	});
+}

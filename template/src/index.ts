@@ -12,14 +12,14 @@ async function main() {
         },
         logger: {},
         graphql: {
-            schema: require.resolve('GraphQLSchema.d.ts'),
+            schema: require.resolve('./GraphQLSchema.d.ts'),
             values: GraphQLValues,
         },
         db: {
             user: '',
             password: '',
             database: '',
-            schema: require.resolve('DBSchema.d.ts'),
+            schema: require.resolve('./DBSchema.d.ts'),
             errorEntityNotFound: Errors.EntityNotFound,
         },
         errors: {
