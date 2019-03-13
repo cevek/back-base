@@ -2,48 +2,59 @@ import { randomBytes } from 'crypto';
 import DataLoader from 'dataloader';
 import {
 	AllOperators,
+	CollectionConstraint,
 	DBCollection,
-	DBOptions,
-	DBClient,
 	DBEntityNotFound,
-	DBQueries,
-	DBQuery,
-	DBRaw,
-	joinDBQueries,
+	DBValue,
+	Fields,
 	Other,
-	query,
+	QueryResult,
 	Where,
 	WhereOr,
-	ResultArr,
-	Result,
-	DBValue,
-	Driver,
-	TransactionType,
-	DB,
 } from './Base';
 
-class Collection<T extends { id: string }> implements DBCollection<T> {
+export type DB<Schema> = Collections<Schema> & {
+	transaction: TransactionFun<Schema>;
+	query: <T>(dbQuery: DBQuery) => Promise<T>;
+};
+
+type TransactionFun<Schema> = (
+	trx: (db: Collections<Schema>) => Promise<void>,
+	rollback?: () => Promise<void>,
+) => Promise<void>;
+
+type Collections<Schema> = {
+	[P in keyof Schema]: Schema[P] extends CollectionConstraint ? Collection<Schema[P]> : never
+};
+
+export function query(strs: TemplateStringsArray, ...inserts: QueryValue[]) {
+	return new DBQuery(strs, inserts);
+}
+export function joinQueries(queries: DBQuery[], separator?: DBQuery): DBQuery {
+	return query`${new DBQueries(queries, separator)}`;
+}
+
+class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 	private name: DBRaw;
 	private loader: DataLoader<T['id'], T | undefined>;
+	fields: Fields<T>;
 	constructor(
 		public collectionName: string,
 		private query: <T>(dbQuery: DBQuery) => Promise<T>,
 		prevCollection: Collection<T> | undefined,
 	) {
 		this.name = new DBRaw(collectionName);
-		this.loader =
-			(prevCollection && prevCollection.loader) ||
-			new DataLoader(
-				async ids => {
-					const rows = await this.findAll({ id: { in: ids } } as Where<T>);
-					const res = (ids.slice() as unknown[]) as (T | undefined)[];
-					for (let i = 0; i < res.length; i++) {
-						res[i] = rows.find(row => row.id === ids[i]);
-					}
-					return res;
-				},
-				{ cache: false },
-			);
+		this.fields = new Proxy({} as Fields<T>, { get: (_, key: string) => new DBRaw(key) });
+		const prevLoader = prevCollection && prevCollection.loader;
+		this.loader = prevLoader || new DataLoader(async ids => this.loadById(ids), { cache: false });
+	}
+	private async loadById(ids: T['id'][]) {
+		const rows = await this.findAll({ id: { in: ids } } as Where<T>);
+		const res = (ids.slice() as unknown[]) as (T | undefined)[];
+		for (let i = 0; i < res.length; i++) {
+			res[i] = rows.find(row => row.id === ids[i]);
+		}
+		return res;
 	}
 	async findById<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
 		const row = await this.findByIdOrNull(id, other);
@@ -56,43 +67,42 @@ class Collection<T extends { id: string }> implements DBCollection<T> {
 		return row;
 	}
 	async findAll<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
-		return this.query<ResultArr<T, Keys>>(
+		return this.query<QueryResult<T, Keys>[]>(
 			query`SELECT ${prepareFields(other.select)} FROM ${this.name}${prepareWhereOr(where)}${prepareOther(other)}`,
 		);
 	}
 	async findByIdOrNull<Keys extends keyof T>(id: T['id'], other: { select?: Keys[] } = {}) {
 		if (other.select === undefined || other.select.length === 0) {
-			return this.loader.load(id) as Promise<Result<T, Keys> | undefined>;
+			return this.loader.load(id) as Promise<QueryResult<T, Keys> | undefined>;
 		}
 		return this.findOneOrNull({ id } as Where<T>, other);
 	}
 	async findOneOrNull<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
 		other.limit = 1;
 		const rows = await this.findAll(where, other);
-		return rows.length > 0 ? (rows[0] as Result<T, Keys>) : undefined;
+		return rows.length > 0 ? rows[0] : undefined;
 	}
 	async update(id: T['id'], data: Partial<T>) {
 		type Keys = keyof T;
 		const values: DBQuery[] = [];
 		for (const key in data) {
-			values.push(query`${new DBRaw(key as string)} = ${(data[key] as unknown) as string}`);
+			values.push(query`${new DBRaw(key)} = ${(data[key] as unknown) as string}`);
 		}
-		const valueQuery = joinDBQueries(values, ', ');
+		const valueQuery = joinQueries(values, query`, `);
 		await this.query(query`UPDATE ${this.name} SET ${valueQuery}${prepareWhereOr({ id: id })}`);
 	}
 	async remove(id: T['id']) {
 		await this.query(query`DELETE FROM ${this.name}${prepareWhereOr({ id: id })}`);
 	}
-	async create(data: Pick<T, Exclude<keyof T, 'id'>>) {
-		type Keys = Exclude<keyof T, 'id'>;
-		const keys: Keys[] = [];
-		const values: unknown[] = [];
+	async create(data: T) {
+		const keys: (keyof T)[] = [];
+		const values: QueryValue[] = [];
 		for (const key in data) {
-			keys.push(key as Keys);
-			values.push(data[key as Keys]);
+			keys.push(key);
+			values.push(data[key]);
 		}
-		const keyQuery = joinDBQueries(keys.map(key => query`${new DBRaw(key as string)}`), ', ');
-		const valueQuery = joinDBQueries(values.map(val => query`${val as string}`), ', ');
+		const keyQuery = joinQueries(keys.map(key => query`${new DBRaw(key as string)}`), query`, `);
+		const valueQuery = joinQueries(values.map(val => query`${val}`), query`, `);
 		await this.query(query`INSERT INTO ${this.name} (${keyQuery}) VALUES (${valueQuery})`);
 	}
 	genId() {
@@ -114,38 +124,34 @@ function prepareFields(fields: ReadonlyArray<string | number | symbol> | undefin
 	return new DBRaw(fields !== undefined && fields.length > 0 ? fields.join(', ') : '*');
 }
 
-function prepareWhereOr(where: WhereOr<{ id: string }>) {
+function prepareWhereOr(where: WhereOr<CollectionConstraint>) {
 	if (Array.isArray(where)) {
 		if (where.length > 0) {
-			return query` WHERE (${joinDBQueries(where.map(prepareWhere), ') OR (')})`;
+			return query` WHERE (${joinQueries(where.map(prepareWhere), query`) OR (`)})`;
 		}
 		return query``;
 	}
 	return query` WHERE ${prepareWhere(where)}`;
 }
 
-function prepareWhere(where: Where<{ id: string }>) {
+function prepareWhere(where: Where<CollectionConstraint>) {
 	const queries: DBQuery[] = [];
 	for (const field in where) {
 		const fieldRaw = new DBRaw(field);
-		const operators = where[field as never] as AllOperators;
-		if (operators instanceof Object && !Array.isArray(operators)) {
+		const operators = where[field] as AllOperators | string;
+		if (typeof operators === 'object' && operators !== null && !Array.isArray(operators)) {
 			for (const op in operators) {
 				queries.push(handleOperator(fieldRaw, op as keyof AllOperators, operators as Required<AllOperators>));
 			}
 		} else {
-			queries.push(query`${fieldRaw} = ${operators as string}`);
+			queries.push(query`${fieldRaw} = ${operators}`);
 		}
 	}
-	return joinDBQueries(queries, ' AND ');
+	return joinQueries(queries, query` AND `);
 }
 
 function handleOperator(field: DBRaw, op: keyof Required<AllOperators>, operators: Required<AllOperators>) {
 	switch (op) {
-		// case 'or': {
-		// 	const val = ops[op];
-		// 	return joinQueries(val.map(v => query`${field} = ${v}`), query` OR `);
-		// }
 		case 'between': {
 			const val = operators.between;
 			return query`${field} BETWEEN ${val[0]} AND ${val[1]}`;
@@ -225,10 +231,10 @@ function prepareOther<T>(other: Other<T, keyof T> | undefined) {
 	}
 	if (other.limit !== undefined) queries.push(query` LIMIT ${other.limit}`);
 	if (other.offset !== undefined) queries.push(query` OFFSET ${other.offset}`);
-	return joinDBQueries(queries);
+	return joinQueries(queries);
 }
 
-function dbQueryToString(dbQuery: DBQuery, values: DBValue[]) {
+function dbQueryToString(dbQuery: DBQuery, values: QueryValue[]) {
 	let queryStr = '';
 	for (let i = 0; i < dbQuery.parts.length; i++) {
 		queryStr = queryStr + dbQuery.parts[i];
@@ -242,7 +248,7 @@ function dbQueryToString(dbQuery: DBQuery, values: DBValue[]) {
 				for (let j = 0; j < value.queries.length; j++) {
 					const subQuery = value.queries[j];
 					if (j > 0 && value.separator !== undefined) {
-						queryStr = queryStr + value.separator;
+						queryStr = queryStr + dbQueryToString(value.separator, values);
 					}
 					queryStr = queryStr + dbQueryToString(subQuery, values);
 				}
@@ -256,11 +262,11 @@ function dbQueryToString(dbQuery: DBQuery, values: DBValue[]) {
 }
 
 /* istanbul ignore next */
-export function never(never?: never): never {
+function never(never?: never): never {
 	throw new Error('Never possible');
 }
 
-function queryFactory(getClient: () => Promise<PoolClient>) {
+function queryFactory(getClient: () => Promise<PoolClient>): QueryFun {
 	return async <T>(query: DBQuery) => {
 		const client = await getClient();
 		const values: DBValue[] = [];
@@ -270,18 +276,19 @@ function queryFactory(getClient: () => Promise<PoolClient>) {
 	};
 }
 
-type Pool = {
-	connect: () => Promise<PoolClient>;
-};
+type Pool = { connect: () => Promise<PoolClient> };
 type PoolClient = { release: () => void; query: (q: string, values?: unknown[]) => Promise<{ rows: unknown }> };
+type QueryFun = <T>(query: DBQuery) => Promise<T>;
+type SchemaConstraint = { [key: string]: CollectionConstraint };
 
-export async function createDB<Schema>(pool: Pool) {
-	type CollectionType = DB<Schema>[keyof Schema];
-	const db = {} as DB<Schema>;
+export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {
+	const query = queryFactory(() => pool.connect());
+	const db = createProxy<Schema>(undefined, query);
 	db.transaction = async (trx, rollback) => {
 		const trxClient = await pool.connect();
+		const query = queryFactory(async () => trxClient);
 		try {
-			const trxDB = await createTransaction<Schema>(proxyDB, pool);
+			const trxDB = createProxy<Schema>(db, query);
 			await trxClient.query('BEGIN');
 			await trx(trxDB);
 			await trxClient.query('COMMIT');
@@ -295,35 +302,19 @@ export async function createDB<Schema>(pool: Pool) {
 			trxClient.release();
 		}
 	};
-	const query = queryFactory(() => pool.connect());
-	db.query = query;
-	const proxyDB = new Proxy(db, {
-		get(_, key: keyof Schema) {
-			const collection = db[key] as CollectionType | undefined;
-			if (collection === undefined) {
-				const newCollection = new Collection(key as string, query, undefined);
-				db[key] = (newCollection as unknown) as CollectionType;
-				return newCollection;
-			}
-			return collection;
-		},
-	});
-	return proxyDB;
+	return db;
 }
 
-async function createTransaction<Schema>(rootDB: DB<Schema>, pool: Pool) {
-	type CollectionType = DB<Schema>[keyof Schema];
-	const db = {} as DB<Schema>;
-	const trxClient = await pool.connect();
-	const query = queryFactory(async () => trxClient);
-	db.query = query;
+function createProxy<Schema extends SchemaConstraint>(rootDB: DB<Schema> | undefined, query: QueryFun) {
+	type CollectionType = Schema[keyof Schema];
+	const db = { query } as DB<Schema>;
 	return new Proxy(db, {
 		get(_, key: keyof Schema) {
-			const collection = db[key] as CollectionType | undefined;
+			const collection = db[key];
 			if (collection === undefined) {
-				const prevCollection = (rootDB[key] as unknown) as Collection<{ id: string }>;
-				const newCollection = new Collection(key as string, query, prevCollection);
-				db[key] = (newCollection as unknown) as CollectionType;
+				const prevCollection = rootDB === undefined ? undefined : (rootDB[key] as Collection<CollectionType>);
+				const newCollection = new Collection<CollectionType>(key as string, query, prevCollection);
+				db[key] = newCollection as DB<Schema>[keyof Schema];
 				return newCollection;
 			}
 			return collection;
@@ -331,9 +322,14 @@ async function createTransaction<Schema>(rootDB: DB<Schema>, pool: Pool) {
 	});
 }
 
-// const driver: Driver<unknown> = {
-// 	CollectionClass: PostgresqlCollection,
-// 	queryFactory: queryFactory,
-// 	transactionFactory: transactionFactory,
-// };
-// export default driver;
+type QueryValue = DBValue | DBRaw | DBQuery | DBQueries;
+
+class DBRaw {
+	constructor(public readonly raw: string) {}
+}
+class DBQuery {
+	constructor(public readonly parts: ReadonlyArray<string>, public readonly values: ReadonlyArray<QueryValue>) {}
+}
+class DBQueries {
+	constructor(public readonly queries: ReadonlyArray<DBQuery>, public readonly separator: DBQuery | undefined) {}
+}

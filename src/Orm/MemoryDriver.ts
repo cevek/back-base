@@ -1,14 +1,28 @@
 import DataLoader from 'dataloader';
-import { DB, DBCollection, DBEntityNotFound, Other, Result, ResultArr, WhereOr } from './Base';
+import { CollectionConstraint, DBCollection, DBEntityNotFound, Fields, Other, QueryResult, WhereOr } from './Base';
 
-class Collection<T extends { id: string }> implements DBCollection<T> {
+export type DB<Schema> = Collections<Schema> & { transaction: TransactionType<Schema> };
+type SchemaConstraint = { [key: string]: CollectionConstraint };
+
+type TransactionType<Schema> = (
+	trx: (db: Collections<Schema>) => Promise<void>,
+	rollback?: () => Promise<void>,
+) => Promise<void>;
+
+type Collections<Schema> = {
+	[P in keyof Schema]: Schema[P] extends CollectionConstraint ? Collection<Schema[P]> : never
+};
+
+class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 	private map: Map<T['id'], T>;
 	private loader: DataLoader<T['id'], T | undefined>;
+	fields: Fields<T>;
 	constructor(public collectionName: string, public prevCollection: Collection<T> | undefined) {
-		this.loader =
-			(prevCollection && prevCollection.loader) ||
-			new DataLoader(async ids => ids.map(id => this.map.get(id)), { cache: false });
-		this.map = (prevCollection && prevCollection.map) || new Map();
+		const prevLoader = prevCollection && prevCollection.loader;
+		const prevMap = prevCollection && prevCollection.map;
+		this.loader = prevLoader || new DataLoader(async ids => ids.map(id => this.map.get(id)), { cache: false });
+		this.fields = new Proxy({} as Fields<T>, { get: (_, key: string) => key });
+		this.map = prevMap || new Map();
 	}
 	genId() {
 		return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
@@ -43,16 +57,16 @@ class Collection<T extends { id: string }> implements DBCollection<T> {
 				rows.push(row[1]);
 			}
 		}
-		return (rows as unknown) as ResultArr<T, Keys>;
+		return rows as QueryResult<T, Keys>[];
 	}
 
 	async findByIdOrNull<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
-		return this.loader.load(id) as Promise<Result<T, Keys> | undefined>;
+		return this.loader.load(id) as Promise<QueryResult<T, Keys> | undefined>;
 	}
 	async findOneOrNull<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
 		other.limit = 1;
 		const rows = await this.findAll(where, other);
-		return rows.length > 0 ? (rows[0] as Result<T, Keys>) : undefined;
+		return rows.length > 0 ? rows[0] : undefined;
 	}
 
 	async update(id: T['id'], data: Partial<T>) {
@@ -68,12 +82,11 @@ class Collection<T extends { id: string }> implements DBCollection<T> {
 	}
 }
 
-export async function createDB<Schema>() {
-	type CollectionType = DB<Schema>[keyof Schema];
-	const db = {} as DB<Schema>;
+export async function createDB<Schema extends SchemaConstraint>() {
+	const db = createProxy<Schema>(undefined);
 	db.transaction = async (trx, rollback) => {
 		try {
-			const trxDB = await createTransaction<Schema>(proxyDB);
+			const trxDB = createProxy<Schema>(db);
 			return await trx(trxDB);
 		} catch (e) {
 			if (rollback !== undefined) {
@@ -82,34 +95,19 @@ export async function createDB<Schema>() {
 			throw e;
 		}
 	};
-	db.query = () => {
-		throw new Error('query method is not supported');
-	};
-	const proxyDB = new Proxy(db, {
-		get(_, key: keyof Schema) {
-			const collection = db[key] as CollectionType | undefined;
-			if (collection === undefined) {
-				const newCollection = new Collection(key as string, undefined);
-				db[key] = (newCollection as unknown) as CollectionType;
-				return newCollection;
-			}
-			return collection;
-		},
-	});
-	return proxyDB
+	return db;
 }
 
-async function createTransaction<Schema>(rootDB: DB<Schema>) {
-	type CollectionType = DB<Schema>[keyof Schema];
+function createProxy<Schema extends SchemaConstraint>(rootDB: DB<Schema> | undefined) {
 	const db = {} as DB<Schema>;
-	db.query = rootDB.query;
+	type CollectionType = Schema[keyof Schema];
 	return new Proxy(db, {
 		get(_, key: keyof Schema) {
-			const collection = db[key] as CollectionType | undefined;
+			const collection = db[key];
 			if (collection === undefined) {
-				const prevCollection = (rootDB[key] as unknown) as Collection<{ id: string }>;
-				const newCollection = new Collection(key as string, prevCollection);
-				db[key] = (newCollection as unknown) as CollectionType;
+				const prevCollection = rootDB === undefined ? undefined : (rootDB[key] as Collection<CollectionType>);
+				const newCollection = new Collection<CollectionType>(key as string, prevCollection);
+				db[key] = newCollection as DB<Schema>[keyof Schema];
 				return newCollection;
 			}
 			return collection;

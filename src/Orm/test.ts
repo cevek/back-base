@@ -1,18 +1,19 @@
 import { createDB } from './PostgresqlDriver';
 // import { createDB } from './MemoryDriver';
 
-interface User {
+type User = {
 	id: string;
 	name: string;
 	login: string;
 	todos: string[];
-}
+};
 
 const perf = false;
 
-interface Schema {
+type Schema = {
 	users: User;
-}
+};
+
 async function main() {
 	const client = {
 		async query(query: string, values?: unknown[]) {
