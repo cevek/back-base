@@ -4,3 +4,4 @@ export * from './src/graphQLUtils';
 export * from './src/testUtils';
 export * from './src/errors';
 export * from './src/Orm';
+export * from './src/Orm/MemoryDriver';

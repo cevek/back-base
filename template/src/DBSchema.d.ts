@@ -2,27 +2,27 @@ export type UserID = 'UserID';
 type TodoID = 'TodoID';
 type TodoListID = 'TodoListID';
 
-interface DBSchema {
+type DBSchema = {
     user: User;
     todo: Todo;
     todoList: TodoList;
 }
 
-interface User {
+type User = {
     id: UserID;
     login: string;
     password: string;
     todoLists: TodoListID[];
 }
 
-interface Todo {
+type Todo = {
     id: TodoID;
     todoListId: TodoListID;
     title: string;
     completed: boolean;
 }
 
-interface TodoList {
+type TodoList = {
     id: TodoListID;
     userId: UserID;
     title: string;

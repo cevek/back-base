@@ -1,4 +1,4 @@
-import {createGraphqApp} from '../../base';
+import {createGraphqApp, DB} from '../../base';
 import {config} from './config';
 import {DBSchema} from './DBSchema';
 import {Errors} from './Errors';

@@ -7,13 +7,13 @@ import { Pool } from 'pg';
 import { createSchema } from 'ts2graphql';
 import { config } from './config';
 import { BaseClientError } from './errors';
-import { DB, DBEntityNotFound } from './Orm';
-// import {createDB} from './Orm/PostgresqlDriver';
-import { createDB } from './Orm/MemoryDriver';
+import { DBEntityNotFound } from './Orm';
+// import {createDB, DB, SchemaConstraint} from './Orm/PostgresqlDriver';
+import { createDB, DB, SchemaConstraint } from './Orm/MemoryDriver';
 
 export { Logger };
 
-export async function createGraphqApp<DBSchema = unknown>(options: {
+export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
 	session?: SessionOptions;
 	db?: {
 		user: string;

@@ -2,7 +2,7 @@ import DataLoader from 'dataloader';
 import { CollectionConstraint, DBCollection, DBEntityNotFound, Fields, Other, QueryResult, WhereOr } from './Base';
 
 export type DB<Schema> = Collections<Schema> & { transaction: TransactionType<Schema> };
-type SchemaConstraint = { [key: string]: CollectionConstraint };
+export type SchemaConstraint = { [key: string]: CollectionConstraint };
 
 type TransactionType<Schema> = (
 	trx: (db: Collections<Schema>) => Promise<void>,
@@ -25,7 +25,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 		this.map = prevMap || new Map();
 	}
 	genId() {
-		return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
+		return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString() as T['id'];
 	}
 	async findById<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
 		const row = await this.findByIdOrNull(id, other);

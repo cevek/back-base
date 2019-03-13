@@ -17,6 +17,8 @@ export type DB<Schema> = Collections<Schema> & {
 	transaction: TransactionFun<Schema>;
 	query: <T>(dbQuery: DBQuery) => Promise<T>;
 };
+export type SchemaConstraint = { [key: string]: CollectionConstraint };
+
 
 type TransactionFun<Schema> = (
 	trx: (db: Collections<Schema>) => Promise<void>,
@@ -279,7 +281,6 @@ function queryFactory(getClient: () => Promise<PoolClient>): QueryFun {
 type Pool = { connect: () => Promise<PoolClient> };
 type PoolClient = { release: () => void; query: (q: string, values?: unknown[]) => Promise<{ rows: unknown }> };
 type QueryFun = <T>(query: DBQuery) => Promise<T>;
-type SchemaConstraint = { [key: string]: CollectionConstraint };
 
 export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {
 	const query = queryFactory(() => pool.connect());
