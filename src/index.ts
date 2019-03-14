@@ -10,6 +10,7 @@ import { BaseClientError } from './errors';
 import { DBEntityNotFound } from './Orm';
 import { createDB, DB, SchemaConstraint } from './Orm/PostgresqlDriver';
 import { DBQueryError } from './Orm/Base';
+import { GraphQLError } from 'graphql';
 
 export * from './utils';
 export * from './graphQLUtils';
@@ -103,25 +104,25 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 			schema: schema,
 			rootValue: options.graphql.values,
 			formatError(err) {
-				if (err.originalError) {
-					if (options.db && err.originalError instanceof DBEntityNotFound) {
-						return options.db.errorEntityNotFound;
-					}
-					if (err.originalError instanceof BaseClientError) {
-						return err.originalError.id;
-					} else {
-						/* istanbul ignore next */
-						if (err.originalError instanceof DBQueryError) {
-							console.error(err.originalError.query);
-							logger.error({ ...err.originalError });
-						} else {
-							logger.error(err.originalError);
-						}
-						return options.errors.unknown;
-					}
+				const error = err.originalError || err;
+				if (error instanceof GraphQLError) {
+					return error;
+				}
+
+				if (options.db && error instanceof DBEntityNotFound) {
+					return options.db.errorEntityNotFound;
+				}
+				if (error instanceof BaseClientError) {
+					return error.id;
 				}
 				/* istanbul ignore next */
-				return err;
+				if (error instanceof DBQueryError) {
+					console.error(error.query);
+					logger.error({ ...error });
+				} else {
+					logger.error(error);
+				}
+				return options.errors.unknown;
 			},
 		}),
 	);
