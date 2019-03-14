@@ -19,7 +19,6 @@ export type DB<Schema> = Collections<Schema> & {
 };
 export type SchemaConstraint = { [key: string]: CollectionConstraint };
 
-
 type TransactionFun<Schema> = (
 	trx: (db: Collections<Schema>) => Promise<void>,
 	rollback?: () => Promise<void>,
@@ -45,8 +44,8 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 		private query: <T>(dbQuery: DBQuery) => Promise<T>,
 		prevCollection: Collection<T> | undefined,
 	) {
-		this.name = new DBRaw(collectionName);
-		this.fields = new Proxy({} as Fields<T>, { get: (_, key: string) => new DBRaw(key) });
+		this.name = field(collectionName);
+		this.fields = new Proxy({} as Fields<T>, { get: (_, key: string) => field(key) });
 		const prevLoader = prevCollection && prevCollection.loader;
 		this.loader = prevLoader || new DataLoader(async ids => this.loadById(ids), { cache: false });
 	}
@@ -88,7 +87,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 		type Keys = keyof T;
 		const values: DBQuery[] = [];
 		for (const key in data) {
-			values.push(query`${new DBRaw(key)} = ${(data[key] as unknown) as string}`);
+			values.push(query`${field(key)} = ${(data[key] as unknown) as string}`);
 		}
 		const valueQuery = joinQueries(values, query`, `);
 		await this.query(query`UPDATE ${this.name} SET ${valueQuery}${prepareWhereOr({ id: id })}`);
@@ -103,7 +102,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 			keys.push(key);
 			values.push(data[key]);
 		}
-		const keyQuery = joinQueries(keys.map(key => query`${new DBRaw(key as string)}`), query`, `);
+		const keyQuery = joinQueries(keys.map(key => query`${field(key)}`), query`, `);
 		const valueQuery = joinQueries(values.map(val => query`${val}`), query`, `);
 		await this.query(query`INSERT INTO ${this.name} (${keyQuery}) VALUES (${valueQuery})`);
 	}
@@ -123,7 +122,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 }
 
 function prepareFields(fields: ReadonlyArray<string | number | symbol> | undefined) {
-	return new DBRaw(fields !== undefined && fields.length > 0 ? fields.join(', ') : '*');
+	return new DBRaw(fields !== undefined && fields.length > 0 ? `"${fields.join('", "')}"` : '*');
 }
 
 function prepareWhereOr(where: WhereOr<CollectionConstraint>) {
@@ -138,9 +137,9 @@ function prepareWhereOr(where: WhereOr<CollectionConstraint>) {
 
 function prepareWhere(where: Where<CollectionConstraint>) {
 	const queries: DBQuery[] = [];
-	for (const field in where) {
-		const fieldRaw = new DBRaw(field);
-		const operators = where[field] as AllOperators | string;
+	for (const f in where) {
+		const fieldRaw = field(f);
+		const operators = where[f] as AllOperators | string;
 		if (typeof operators === 'object' && operators !== null && !Array.isArray(operators)) {
 			for (const op in operators) {
 				queries.push(handleOperator(fieldRaw, op as keyof AllOperators, operators as Required<AllOperators>));
@@ -228,8 +227,8 @@ function prepareOther<T>(other: Other<T, keyof T> | undefined) {
 	if (!other) return query``;
 	const queries: DBQuery[] = [];
 	if (other.order) {
-		if (other.order.asc) queries.push(query` ORDER BY ${new DBRaw(String(other.order.asc))} ASC`);
-		else if (other.order.desc) queries.push(query` ORDER BY ${new DBRaw(String(other.order.desc))} DESC`);
+		if (other.order.asc) queries.push(query` ORDER BY ${field(other.order.asc)} ASC`);
+		else if (other.order.desc) queries.push(query` ORDER BY ${field(other.order.desc)} DESC`);
 	}
 	if (other.limit !== undefined) queries.push(query` LIMIT ${other.limit}`);
 	if (other.offset !== undefined) queries.push(query` OFFSET ${other.offset}`);
@@ -333,4 +332,8 @@ class DBQuery {
 }
 class DBQueries {
 	constructor(public readonly queries: ReadonlyArray<DBQuery>, public readonly separator: DBQuery | undefined) {}
+}
+
+function field(field: string | number | symbol) {
+	return new DBRaw(`"${field as string}"`);
 }
