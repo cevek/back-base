@@ -76,6 +76,11 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 		);
 	}
 	async findByIdOrNull<Keys extends keyof T = never>(id: T['id'], other: { select?: Keys[] } = {}) {
+		try {
+			if (BigInt(id) === 0n) return;
+		} catch (e) {
+			return;
+		}
 		if (other.select === undefined || other.select.length === 0) {
 			return this.loader.load(id) as Promise<QueryResult<T, Keys> | undefined>;
 		}
