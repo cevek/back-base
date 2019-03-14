@@ -6,11 +6,11 @@ import {
 	DBCollection,
 	DBEntityNotFound,
 	DBValue,
-	Fields,
 	Other,
 	QueryResult,
 	Where,
 	WhereOr,
+	DBQueryError,
 } from './Base';
 
 export type DB<Schema> = Collections<Schema> & {
@@ -18,6 +18,7 @@ export type DB<Schema> = Collections<Schema> & {
 	query: <T>(dbQuery: DBQuery) => Promise<T>;
 };
 export type SchemaConstraint = { [key: string]: CollectionConstraint };
+export type Column = DBRaw;
 
 type TransactionFun<Schema> = (
 	trx: (db: Collections<Schema>) => Promise<void>,
@@ -36,16 +37,18 @@ export function joinQueries(queries: DBQuery[], separator?: DBQuery): DBQuery {
 }
 
 class Collection<T extends CollectionConstraint> implements DBCollection<T> {
-	private name: DBRaw;
 	private loader: DataLoader<T['id'], T | undefined>;
-	fields: Fields<T>;
+	name: Column;
+	fields: { [P in keyof T]: Column };
 	constructor(
 		public collectionName: string,
 		private query: <T>(dbQuery: DBQuery) => Promise<T>,
 		prevCollection: Collection<T> | undefined,
 	) {
 		this.name = field(collectionName);
-		this.fields = new Proxy({} as Fields<T>, { get: (_, key: string) => field(key) });
+		this.fields = new Proxy({} as this['fields'], {
+			get: (_, key: string) => new DBRaw(`"${collectionName}"."${key}"`),
+		});
 		const prevLoader = prevCollection && prevCollection.loader;
 		this.loader = prevLoader || new DataLoader(async ids => this.loadById(ids), { cache: false });
 	}
@@ -57,28 +60,28 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 		}
 		return res;
 	}
-	async findById<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
+	async findById<Keys extends keyof T = never>(id: T['id'], other?: { select?: Keys[] }) {
 		const row = await this.findByIdOrNull(id, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(id));
 		return row;
 	}
-	async findOne<Keys extends keyof T>(where: WhereOr<T>, other?: Other<T, Keys>) {
+	async findOne<Keys extends keyof T = never>(where: WhereOr<T>, other?: Other<T, Keys>) {
 		const row = await this.findOneOrNull(where, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(where));
 		return row;
 	}
-	async findAll<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
+	async findAll<Keys extends keyof T = never>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
 		return this.query<QueryResult<T, Keys>[]>(
 			query`SELECT ${prepareFields(other.select)} FROM ${this.name}${prepareWhereOr(where)}${prepareOther(other)}`,
 		);
 	}
-	async findByIdOrNull<Keys extends keyof T>(id: T['id'], other: { select?: Keys[] } = {}) {
+	async findByIdOrNull<Keys extends keyof T = never>(id: T['id'], other: { select?: Keys[] } = {}) {
 		if (other.select === undefined || other.select.length === 0) {
 			return this.loader.load(id) as Promise<QueryResult<T, Keys> | undefined>;
 		}
 		return this.findOneOrNull({ id } as Where<T>, other);
 	}
-	async findOneOrNull<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
+	async findOneOrNull<Keys extends keyof T = never>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
 		other.limit = 1;
 		const rows = await this.findAll(where, other);
 		return rows.length > 0 ? rows[0] : undefined;
@@ -132,7 +135,7 @@ function prepareWhereOr(where: WhereOr<CollectionConstraint>) {
 		}
 		return query``;
 	}
-	return query` WHERE ${prepareWhere(where)}`;
+	return Object.keys(where).length === 0 ? query`` : query` WHERE ${prepareWhere(where)}`;
 }
 
 function prepareWhere(where: Where<CollectionConstraint>) {
@@ -161,9 +164,6 @@ function handleOperator(field: DBRaw, op: keyof Required<AllOperators>, operator
 			const val = operators.notBetween;
 			return query`${field} NOT BETWEEN ${val[0]} AND ${val[1]}`;
 		}
-		case 'eq': {
-			return query`${field} = ${operators.eq}`;
-		}
 		case 'gt': {
 			return query`${field} > ${operators.gt}`;
 		}
@@ -180,10 +180,10 @@ function handleOperator(field: DBRaw, op: keyof Required<AllOperators>, operator
 			return query`${field} <> ${operators.ne}`;
 		}
 		case 'in': {
-			return query`${field} IN [${operators.in}]`;
+			return query`${field} = ANY (${operators.in})`;
 		}
 		case 'notIn': {
-			return query`${field} NOT IN [${operators.notIn}]`;
+			return query`${field} <> ANY (${operators.notIn})`;
 		}
 		case 'like': {
 			return query`${field} LIKE ${operators.like}`;
@@ -272,13 +272,21 @@ function queryFactory(getClient: () => Promise<PoolClient>): QueryFun {
 		const client = await getClient();
 		const values: DBValue[] = [];
 		const queryStr = dbQueryToString(query, values);
-		const res = await client.query(queryStr, values);
+		let res;
+		try {
+			res = await client.query(queryStr, values);
+		} catch (err) {
+			throw new DBQueryError(queryStr, values, err.message);
+		}
 		return (res.rows as unknown) as T;
 	};
 }
 
 type Pool = { connect: () => Promise<PoolClient> };
-type PoolClient = { release: () => void; query: (q: string, values?: unknown[]) => Promise<{ rows: unknown }> };
+type PoolClient = {
+	release: () => void;
+	query: (q: string, values?: unknown[]) => Promise<{ rows: unknown; command: string }>;
+};
 type QueryFun = <T>(query: DBQuery) => Promise<T>;
 
 export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {

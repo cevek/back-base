@@ -8,9 +8,15 @@ import { createSchema } from 'ts2graphql';
 import { config } from './config';
 import { BaseClientError } from './errors';
 import { DBEntityNotFound } from './Orm';
-// import {createDB, DB, SchemaConstraint} from './Orm/PostgresqlDriver';
-import { createDB, DB, SchemaConstraint } from './Orm/MemoryDriver';
+import { createDB, DB, SchemaConstraint } from './Orm/PostgresqlDriver';
+import { DBQueryError } from './Orm/Base';
 
+export * from './utils';
+export * from './graphQLUtils';
+export * from './testUtils';
+export * from './errors';
+export * from './Orm';
+export * from './Orm/PostgresqlDriver';
 export { Logger };
 
 export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
@@ -47,18 +53,16 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 
 	let db: DB<DBSchema> | undefined;
 	if (options.db) {
-		// const dbPool = new Pool({
-		// 	password: options.db.password,
-		// 	user: options.db.user,
-		// 	database: options.db.database,
-		// 	host: options.db.host,
-		// 	port: options.db.port,
-		// });
-		// db = await createDB<DBSchema>({
-		// 	getClient: () => dbPool.connect(),
-		// 	driver: postresqlDriver,
-		// });
-		db = await createDB<DBSchema>();
+		db = await createDB<DBSchema>(
+			new Pool({
+				password: options.db.password,
+				user: options.db.user,
+				database: options.db.database,
+				host: options.db.host,
+				port: options.db.port,
+			}),
+		);
+		// db = await createDB<DBSchema>();
 	}
 	const express = Express();
 	express.disable('x-powered-by');
@@ -107,7 +111,12 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 						return err.originalError.id;
 					} else {
 						/* istanbul ignore next */
-						logger.error(err.originalError);
+						if (err.originalError instanceof DBQueryError) {
+							console.error(err.originalError.query);
+							logger.error({ ...err.originalError });
+						} else {
+							logger.error(err.originalError);
+						}
 						return options.errors.unknown;
 					}
 				}

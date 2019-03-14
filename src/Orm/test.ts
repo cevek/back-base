@@ -20,7 +20,7 @@ async function main() {
 			if (!perf) {
 				console.log(query, values);
 			}
-			return { rows: [] };
+			return { rows: [], command: '' };
 		},
 		release() {},
 	};
@@ -52,7 +52,7 @@ async function main() {
 	await collection.findAll({ id: { like: 'foo' } }, { order: { asc: 'name' } });
 	await collection.findAll({ todos: { contains: ['1'] } }, { order: { desc: 'login' } });
 	await collection.findAll({ todos: { contained: ['1'] } }, { order: { desc: 'login' }, offset: 4, limit: 2 });
-	await collection.findAll({ id: '12', login: { eq: 'foo' }, name: { ne: 'hey' } });
+	await collection.findAll({ id: '12', login: 'foo', name: { ne: 'hey' } });
 	await collection.findOneOrNull({ id: '1' });
 
 	if (perf) {

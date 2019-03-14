@@ -1,7 +1,7 @@
 import {TodoID, TodoListID, User} from './DBSchema';
 import {ClientError, Errors} from './Errors';
 import {Account, Mutation, Query, Todo, TodoList} from './GraphQLSchema';
-import {QueryParameters, QueryResult, removeItemOrNever, Return} from '../../base';
+import {QueryParameters, QueryResult, removeItemOrNever, Return} from '../../src';
 import {db} from './globals';
 
 export function withAuth<Arg, T>(cb: (arg: Arg, ctx: ContextWithUser) => T) {

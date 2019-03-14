@@ -1,6 +1,6 @@
 import {Errors} from '../Errors';
 import {config} from '../config';
-import {TestSession} from '../../../base';
+import {TestSession} from '../../../src';
 import '../';
 
 class Test {

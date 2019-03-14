@@ -1,5 +1,5 @@
 import DataLoader from 'dataloader';
-import { CollectionConstraint, DBCollection, DBEntityNotFound, Fields, Other, QueryResult, WhereOr } from './Base';
+import { CollectionConstraint, DBCollection, DBEntityNotFound, Other, QueryResult, WhereOr } from './Base';
 
 export type DB<Schema> = Collections<Schema> & { transaction: TransactionType<Schema> };
 export type SchemaConstraint = { [key: string]: CollectionConstraint };
@@ -16,12 +16,10 @@ type Collections<Schema> = {
 class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 	private map: Map<T['id'], T>;
 	private loader: DataLoader<T['id'], T | undefined>;
-	fields: Fields<T>;
 	constructor(public collectionName: string, public prevCollection: Collection<T> | undefined) {
 		const prevLoader = prevCollection && prevCollection.loader;
 		const prevMap = prevCollection && prevCollection.map;
 		this.loader = prevLoader || new DataLoader(async ids => ids.map(id => this.map.get(id)), { cache: false });
-		this.fields = new Proxy({} as Fields<T>, { get: (_, key: string) => key });
 		this.map = prevMap || new Map();
 	}
 	genId() {
