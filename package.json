@@ -1,6 +1,5 @@
 {
 	"name": "back-base",
-	"private": true,
 	"version": "1.0.0",
 	"description": "",
 	"main": "dist/index",
@@ -20,6 +19,15 @@
 	"keywords": [],
 	"author": "",
 	"license": "MIT",
+	"bin": {
+		"base": "dist/cli.js"
+	},
+	"files": [
+		"dist",
+		"template",
+		"tsconfig.base.json",
+		"*.js"
+	],
 	"dependencies": {
 		"@types/bunyan": "^1.8.5",
 		"@types/cors": "^2.8.4",
@@ -40,6 +48,7 @@
 		"express": "^4.16.4",
 		"express-graphql": "^0.7.1",
 		"express-session": "^1.15.6",
+		"fs-extra": "^7.0.1",
 		"graphql": "^14.1.1",
 		"istanbul": "^0.4.5",
 		"nodemailer": "^5.1.1",
@@ -54,6 +63,7 @@
 		"typescript": "^3.4.0-dev.20190313"
 	},
 	"devDependencies": {
+		"@types/fs-extra": "^5.0.5",
 		"@typescript-eslint/eslint-plugin": "^1.4.2",
 		"@typescript-eslint/eslint-plugin-tslint": "^1.4.2",
 		"c8": "^3.4.0",

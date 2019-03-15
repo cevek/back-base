@@ -4,12 +4,9 @@ export type QueryResult<T, Context> = {
 
 export type QueryParameters<Q> = { [P in keyof Q]: Q[P] extends (args: infer Args) => unknown ? Args : never };
 
-type PromisifyObj<T> = { [P in keyof T]: PromisifyValue<T[P], T[P]> };
-type PromisifyValue<T, Raw> = [T] extends [object]
-	? T extends Array<unknown>
-		? Promise<PromisifyObj<T>>
-		: (T extends Date ? Raw : PromisifyObj<T> | Promise<PromisifyObj<T>>)
-	: Raw;
+type PromisifyObj<T> = { [P in keyof T]: PromisifyValue<T[P]> };
+type PromisifyValue<T> = [T] extends [object]
+	? (T extends Date ? Date : PromisifyObj<T> | Promise<PromisifyObj<T>>)
+	: T;
 
-export type Return<T> = PromisifyValue<T, Promise<T>>;
-
+export type Return<T> = Promise<[T] extends [object] ? ([T] extends [Date] ? Date : PromisifyObj<T>) : T>;

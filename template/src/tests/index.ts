@@ -1,6 +1,8 @@
+import {TestSession} from 'back-base';
 import {Errors} from '../Errors';
 import {config} from '../config';
-import {TestSession} from '../../../src';
+
+// init app
 import '../';
 
 class Test {

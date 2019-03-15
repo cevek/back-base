@@ -1,0 +1,4 @@
+{
+    "extends": "back-base/tsconfig.base.json",
+    "compilerOptions": {}
+}
