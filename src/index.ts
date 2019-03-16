@@ -165,6 +165,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				}
 
 				if (options.db && error instanceof DBEntityNotFound) {
+					logger.error(error.message);
 					return options.db.errorEntityNotFound;
 				}
 				if (error instanceof BaseClientError) {
@@ -172,7 +173,6 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				}
 				/* istanbul ignore next */
 				if (error instanceof DBQueryError) {
-					console.error(error.query);
 					logger.error({ ...error });
 				} else {
 					logger.error(error);

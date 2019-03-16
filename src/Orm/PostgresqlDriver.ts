@@ -272,7 +272,7 @@ function never(never?: never): never {
 	throw new Error('Never possible');
 }
 
-function queryFactory(getClient: () => Promise<PoolClient>): QueryFun {
+function queryFactory(getClient: () => Promise<PoolClient>, release: boolean): QueryFun {
 	return async <T>(query: DBQuery) => {
 		const client = await getClient();
 		const values: DBValue[] = [];
@@ -280,6 +280,9 @@ function queryFactory(getClient: () => Promise<PoolClient>): QueryFun {
 		let res;
 		try {
 			res = await client.query(queryStr, values);
+			if (release) {
+				client.release();
+			}
 		} catch (err) {
 			throw new DBQueryError(queryStr, values, err.message);
 		}
@@ -295,11 +298,11 @@ type PoolClient = {
 type QueryFun = <T>(query: DBQuery) => Promise<T>;
 
 export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {
-	const query = queryFactory(() => pool.connect());
+	const query = queryFactory(() => pool.connect(), true);
 	const db = createProxy<Schema>(undefined, query);
 	db.transaction = async (trx, rollback) => {
 		const trxClient = await pool.connect();
-		const query = queryFactory(async () => trxClient);
+		const query = queryFactory(async () => trxClient, false);
 		try {
 			const trxDB = createProxy<Schema>(db, query);
 			await trxClient.query('BEGIN');
