@@ -4,11 +4,16 @@
     "scripts": {
         "start": "node src",
         "debug": "node --inspect-brk src",
-		"lint": "tsc --noEmit && eslint src/**/*.ts",
-		"test": "node src/tests",
+        "lint": "tsc --noEmit && eslint src/**/*.ts",
+        "test": "node src/tests",
         "test-debug": "node --inspect-brk src/tests",
         "coverage": "nyc --extension .ts npm test",
         "pre-commit": "lint"
+    },
+    "husky": {
+        "hooks": {
+            "pre-commit": "npm run lint"
+        }
     },
     "dependencies": {
         "backend-base": ">1.0.0"
