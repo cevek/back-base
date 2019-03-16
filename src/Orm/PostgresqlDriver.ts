@@ -150,7 +150,7 @@ function prepareWhere(where: Where<CollectionConstraint>) {
 	for (const f in where) {
 		const fieldRaw = field(f);
 		const operators = where[f] as AllOperators | string;
-		if (typeof operators === 'object' && operators !== null && !Array.isArray(operators)) {
+		if (typeof operators === 'object' && !Array.isArray(operators)) {
 			for (const op in operators) {
 				queries.push(handleOperator(fieldRaw, op as keyof AllOperators, operators as Required<AllOperators>));
 			}
@@ -274,6 +274,11 @@ function never(never?: never): never {
 	throw new Error('Never possible');
 }
 
+function maybe<T>(val: T): T | undefined {
+	return val;
+}
+
+
 function queryFactory(getClient: () => Promise<PoolClient>, release: boolean): QueryFun {
 	return async <T>(query: DBQuery) => {
 		const client = await getClient();
@@ -286,7 +291,7 @@ function queryFactory(getClient: () => Promise<PoolClient>, release: boolean): Q
 				client.release();
 			}
 		} catch (err) {
-			throw new DBQueryError(queryStr, values, err.message);
+			throw new DBQueryError(queryStr, values, (err as Error).message);
 		}
 		return (res.rows as unknown) as T;
 	};
@@ -328,7 +333,7 @@ function createProxy<Schema extends SchemaConstraint>(rootDB: DB<Schema> | undef
 	const db = { query, transaction: {} } as DB<Schema>;
 	return new Proxy(db, {
 		get(_, key: keyof Schema) {
-			const collection = db[key];
+			const collection = maybe(db[key]);
 			if (collection === undefined) {
 				const prevCollection = rootDB === undefined ? undefined : (rootDB[key] as Collection<CollectionType>);
 				const newCollection = new Collection<CollectionType>(key as string, query, prevCollection);
@@ -380,7 +385,8 @@ export async function readMigrationsFromDir(dir: string) {
 		const m = file.match(/^\d{4}-\d{2}-\d{2} \d{2}-\d{2} (.*?)\.sql$/);
 		if (!m) throw new Error(`Incorrect migration filename: ${file}`);
 		const migrationName = m[1];
-		if (migrations.find(m => m.name === migrationName)) throw new Error(`Migration with name "${migrationName}" already exists`);
+		if (migrations.find(m => m.name === migrationName))
+			throw new Error(`Migration with name "${migrationName}" already exists`);
 		const up = await readFile(dir + '/' + file, 'utf8');
 		migrations.push({ name: migrationName, up: up });
 	}

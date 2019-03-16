@@ -101,7 +101,7 @@ function createProxy<Schema extends SchemaConstraint>(rootDB: DB<Schema> | undef
 	type CollectionType = Schema[keyof Schema];
 	return new Proxy(db, {
 		get(_, key: keyof Schema) {
-			const collection = db[key];
+			const collection = maybe(db[key]);
 			if (collection === undefined) {
 				const prevCollection = rootDB === undefined ? undefined : (rootDB[key] as Collection<CollectionType>);
 				const newCollection = new Collection<CollectionType>(key as string, prevCollection);
@@ -111,4 +111,8 @@ function createProxy<Schema extends SchemaConstraint>(rootDB: DB<Schema> | undef
 			return collection;
 		},
 	});
+}
+
+function maybe<T>(val: T): T | undefined {
+	return val;
 }
