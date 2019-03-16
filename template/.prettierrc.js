@@ -1,1 +1,1 @@
-module.exports = require('base/.prettierr');
+module.exports = require('backend-base/.prettierr');

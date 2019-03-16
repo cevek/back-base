@@ -1,4 +1,4 @@
-import {QueryParameters, QueryResult, removeItemOrNever, Return} from 'back-base';
+import {QueryParameters, QueryResult, removeItemOrNever, Return} from 'backend-base';
 import {TodoID, TodoListID, User} from './DBSchema';
 import {ClientError, Errors} from './Errors';
 import {Account, Mutation, Query, Todo, TodoList} from './GraphQLSchema';

@@ -1,4 +1,4 @@
 {
-    "extends": "back-base/tsconfig.base.json",
+    "extends": "backend-base/tsconfig.base.json",
     "compilerOptions": {}
 }

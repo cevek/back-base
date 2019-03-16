@@ -3,7 +3,7 @@
 	"compilerOptions": {
 		"baseUrl": "./",
 		"paths": {
-			"back-base": ["src/"]
+			"backend-base": ["src/"]
 		}
 	}
 }

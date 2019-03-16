@@ -1,4 +1,4 @@
-import {Logger, DB} from 'back-base';
+import {Logger, DB} from 'backend-base';
 import {DBSchema} from './DBSchema';
 
 export let db: DB<DBSchema>;

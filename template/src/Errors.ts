@@ -1,4 +1,4 @@
-import {BaseClientError} from 'back-base';
+import {BaseClientError} from 'backend-base';
 export enum Errors {
     SomethingWentWrong = 'SomethingWentWrong',
     ValidationFailed = 'ValidationFailed',

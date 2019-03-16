@@ -1,17 +1,15 @@
 {
-	"name": "project",
-	"private": true,
-	"scripts": {
-		"start": "node src",
-		"debug": "node --inspect-brk src",
-		"test": "node src/tests",
-		"test-debug": "node --inspect-brk src/tests",
-		"coverage": "nyc --extension .ts npm test",
-		"lint": "eslint src/**/*.ts"
-	},
-	"dependencies": {
-		"@types/node": ">11.0.0",
-		"ts-node": ">7.0.1",
-		"typescript": ">3.3.0"
-	}
+    "name": "project",
+    "private": true,
+    "scripts": {
+        "start": "node src",
+        "debug": "node --inspect-brk src",
+        "test": "node src/tests",
+        "test-debug": "node --inspect-brk src/tests",
+        "coverage": "nyc --extension .ts npm test",
+        "lint": "eslint src/**/*.ts"
+    },
+    "dependencies": {
+        "backend-base": ">1.0.0"
+    }
 }

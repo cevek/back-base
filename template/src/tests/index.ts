@@ -1,4 +1,4 @@
-import {TestSession} from 'back-base';
+import {TestSession} from 'backend-base';
 import {Errors} from '../Errors';
 import {config} from '../config';
 
