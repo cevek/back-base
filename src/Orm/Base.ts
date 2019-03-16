@@ -105,7 +105,7 @@ export class DBEntityNotFound extends Error {
 	}
 }
 export class DBQueryError extends Error {
-	constructor(public query: string, public values: DBValue[], public sql: string) {
+	constructor(public query: string, public values: DBValue[], public error: string) {
 		super(`SQL Error`);
 	}
 }

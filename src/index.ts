@@ -1,3 +1,4 @@
+import dotenv from 'dotenv';
 import Logger from 'bunyan';
 import cors from 'cors';
 import Express from 'express';
@@ -8,10 +9,11 @@ import { createSchema } from 'ts2graphql';
 import { config } from './config';
 import { BaseClientError } from './errors';
 import { DBEntityNotFound } from './Orm';
-import { createDB, DB, SchemaConstraint } from './Orm/PostgresqlDriver';
+import { createDB, DB, SchemaConstraint, migrateUp, readMigrationsFromDir } from './Orm/PostgresqlDriver';
 import { DBQueryError } from './Orm/Base';
 import { GraphQLError } from 'graphql';
 import { EventEmitter } from 'events';
+import { dirname } from 'path';
 
 export * from './utils';
 export * from './graphQLUtils';
@@ -21,6 +23,10 @@ export * from './Orm';
 export * from './Orm/PostgresqlDriver';
 export { Logger };
 
+const ENV = process.env.NODE_ENV || 'development';
+const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
+envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
+// console.log(process.env);
 export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
 	session?: SessionOptions;
 	db?: {
@@ -49,7 +55,10 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	db: DB<DBSchema>;
 	express: Express.Express;
 }> {
+	console.log('ENV=' + (process.env.NODE_ENV || 'development'));
 	const PRODUCTION = process.env.NODE_ENV === 'production';
+	const projectDir = dirname(require.main!.filename);
+
 	enum ConsoleColor {
 		GRAY = 0,
 		RED = 1,
@@ -111,14 +120,30 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	if (options.db) {
 		db = await createDB<DBSchema>(
 			new Pool({
-				password: options.db.password,
-				user: options.db.user,
-				database: options.db.database,
+				password: validate(options.db.password, 'password'),
+				user: validate(options.db.user, 'user'),
+				database: validate(options.db.database, 'name'),
 				host: options.db.host,
 				port: options.db.port,
 			}),
 		);
-		// db = await createDB<DBSchema>();
+		function validate(str: string, field: string) {
+			if (typeof str !== 'string') {
+				throw new Error(`db ${field} is incorrect: ${str}`);
+			}
+			return str;
+		}
+		try {
+			const migrations = await readMigrationsFromDir(projectDir + '/../migrations/');
+			await migrateUp(db, migrations, logger);
+		} catch (e) {
+			if (e instanceof DBQueryError) {
+				logger.error('Migration error: ' + e.error);
+			} else {
+				logger.error('Migration error', e);
+			}
+			throw e;
+		}
 	}
 	const express = Express();
 	express.disable('x-powered-by');
@@ -163,17 +188,17 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				if (error instanceof GraphQLError) {
 					return error;
 				}
-
+				debugger;
+				if (error instanceof BaseClientError) {
+					return error.id;
+				}
 				if (options.db && error instanceof DBEntityNotFound) {
 					logger.error(error.message);
 					return options.db.errorEntityNotFound;
 				}
-				if (error instanceof BaseClientError) {
-					return error.id;
-				}
 				/* istanbul ignore next */
 				if (error instanceof DBQueryError) {
-					logger.error({ ...error });
+					logger.error('DBQuery error: ', error.query, error.values);
 				} else {
 					logger.error(error);
 				}

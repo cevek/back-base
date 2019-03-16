@@ -12,16 +12,18 @@ import {
 	WhereOr,
 	DBQueryError,
 } from './Base';
+import { readdir, readFile } from 'fs-extra';
 
 export type DB<Schema> = Collections<Schema> & {
 	transaction: TransactionFun<Schema>;
-	query: <T>(dbQuery: DBQuery) => Promise<T>;
+	query: QueryFun;
 };
+export type TransactionDB<Schema> = Collections<Schema> & { query: QueryFun };
 export type SchemaConstraint = { [key: string]: CollectionConstraint };
 export type Column = DBRaw;
 
 type TransactionFun<Schema> = (
-	trx: (db: Collections<Schema>) => Promise<void>,
+	trx: (db: TransactionDB<Schema>) => Promise<void>,
 	rollback?: () => Promise<void>,
 ) => Promise<void>;
 
@@ -323,7 +325,7 @@ export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {
 
 function createProxy<Schema extends SchemaConstraint>(rootDB: DB<Schema> | undefined, query: QueryFun) {
 	type CollectionType = Schema[keyof Schema];
-	const db = { query } as DB<Schema>;
+	const db = { query, transaction: {} } as DB<Schema>;
 	return new Proxy(db, {
 		get(_, key: keyof Schema) {
 			const collection = db[key];
@@ -352,4 +354,75 @@ class DBQueries {
 
 function field(field: string | number | symbol) {
 	return new DBRaw(`"${field as string}"`);
+}
+
+async function createMigrationTable(db: TransactionDB<unknown>) {
+	await db.query(query`
+	 CREATE TABLE IF NOT EXISTS migrations (
+		id SERIAL PRIMARY KEY,
+		name VARCHAR(255) NOT NULL UNIQUE,
+		"runAt" TIMESTAMP NOT NULL 
+	);
+	`);
+}
+
+export interface Migration {
+	up: string;
+	name: string;
+}
+
+export async function readMigrationsFromDir(dir: string) {
+	const files = await readdir(dir);
+	files.sort();
+	const migrations: Migration[] = [];
+	for (let i = 0; i < files.length; i++) {
+		const file = files[i];
+		const m = file.match(/^\d{4}-\d{2}-\d{2} \d{2}-\d{2} (.*?)\.sql$/);
+		if (!m) throw new Error(`Incorrect migration filename: ${file}`);
+		const migrationName = m[1];
+		if (migrations.find(m => m.name === migrationName)) throw new Error(`Migration with name "${migrationName}" already exists`);
+		const up = await readFile(dir + '/' + file, 'utf8');
+		migrations.push({ name: migrationName, up: up });
+	}
+	return migrations;
+}
+
+export async function migrateUp(
+	db: DB<unknown>,
+	migrations: Migration[],
+	logger: { info: (...args: unknown[]) => void },
+) {
+	await db.transaction(async trx => {
+		await createMigrationTable(trx);
+		const lastAppliedMigration = (await trx.query<{ name: string }[]>(
+			query`SELECT name FROM migrations ORDER BY id DESC LIMIT 1`,
+		)).pop();
+		if (migrations.length === 0) return;
+		let newMigrations = migrations;
+		if (lastAppliedMigration) {
+			const idx = migrations.findIndex(m => m.name === lastAppliedMigration.name);
+			if (idx === -1) throw new Error(`${lastAppliedMigration.name} is not found in migrations`);
+			newMigrations = migrations.slice(idx + 1);
+		}
+		if (newMigrations.length > 0) {
+			for (let i = 0; i < newMigrations.length; i++) {
+				const migration = newMigrations[i];
+				try {
+					await trx.query(query`${new DBRaw(migration.up)}`);
+				} catch (err) {
+					if (err instanceof DBQueryError) {
+						throw new DBQueryError(err.query, err.values, migration.name + ': ' + err.error);
+					}
+					throw err;
+				}
+			}
+			await trx.query(
+				query`INSERT INTO migrations (name, "runAt") VALUES ${joinQueries(
+					newMigrations.map(m => query`(${m.name}, ${new Date()})`),
+					query`,`,
+				)}`,
+			);
+			logger.info(`Apply new migrations: ${newMigrations.map(m => m.name).join(', ')}`);
+		}
+	});
 }
