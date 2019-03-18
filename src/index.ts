@@ -1,3 +1,5 @@
+if (+process.versions.node.replace(/\.\d+$/, '') < 11)
+    throw new Error(`Required version of node: >=11, current: ${process.versions.node}`);
 import dotenv from 'dotenv';
 import Logger from 'bunyan';
 import cors from 'cors';
@@ -9,11 +11,12 @@ import { createSchema } from 'ts2graphql';
 import { config } from './config';
 import { BaseClientError } from './errors';
 import { DBEntityNotFound } from './Orm';
-import { createDB, DB, SchemaConstraint, migrateUp, readMigrationsFromDir } from './Orm/PostgresqlDriver';
+import { createDB, DB, SchemaConstraint, migrateUp, readMigrationsFromDir, query } from './Orm/PostgresqlDriver';
 import { DBQueryError } from './Orm/Base';
 import { GraphQLError } from 'graphql';
 import { EventEmitter } from 'events';
 import { dirname } from 'path';
+import { sleep } from './utils';
 
 export * from './utils';
 export * from './graphQLUtils';
@@ -34,7 +37,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		password: string;
 		database: string;
 		host?: string;
-		port?: number;
+		port?: number | string | number;
 		schema: string;
 		errorEntityNotFound: unknown;
 	};
@@ -124,7 +127,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				user: validate(options.db.user, 'user'),
 				database: validate(options.db.database, 'name'),
 				host: options.db.host,
-				port: options.db.port,
+				port: typeof options.db.port === 'string' ? Number(options.db.port) : options.db.port,
 			}),
 		);
 		function validate(str: string, field: string) {
@@ -132,6 +135,15 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				throw new Error(`db ${field} is incorrect: ${str}`);
 			}
 			return str;
+		}
+		while (true) {
+			try {
+				await db.query(query`SELECT 1`);
+				break;
+			} catch (e) {
+				console.error('Postgres is unavailable: ' + e.message);
+				await sleep(1000);
+			}
 		}
 		try {
 			const migrations = await readMigrationsFromDir(projectDir + '/../migrations/');

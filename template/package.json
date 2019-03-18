@@ -12,7 +12,8 @@
     },
     "husky": {
         "hooks": {
-            "pre-commit": "npm run lint"
+			"pre-commit": "npm run lint",
+			"post-merge": "git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep --quiet package.json && npm install"
         }
     },
     "dependencies": {

@@ -1,5 +1,3 @@
-
-
 /* istanbul ignore next */
 export function lastItem<T>(arr: ReadonlyArray<T>): T {
 	return arr.length === 0 ? undefined! : arr[arr.length - 1];
@@ -26,4 +24,8 @@ export function removeItemOrNever<Arr extends ReadonlyArray<T>, T>(arr: Arr, ite
 /* istanbul ignore next */
 export function never(never?: never): never {
 	throw new Error('Never possible');
+}
+
+export function sleep(ms: number) {
+	return new Promise(res => setTimeout(res, ms));
 }
