@@ -3,7 +3,8 @@
     "private": true,
     "scripts": {
         "start": "node src",
-        "debug": "node --inspect-brk src",
+		"debug": "node --inspect-brk src",
+		"prod": "git pull && npm install && pm2 start src",
         "lint": "tsc --noEmit && eslint src/**/*.ts",
         "test": "node src/tests",
         "test-debug": "node --inspect-brk src/tests",
