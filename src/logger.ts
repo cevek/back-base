@@ -1,5 +1,6 @@
 import Logger from 'bunyan';
 import { EventEmitter } from 'events';
+import { PRODUCTION } from './config';
 
 enum ConsoleColor {
 	GRAY = 0,
@@ -32,11 +33,13 @@ class LogStream extends EventEmitter {
 	write(b: string | Buffer) {
 		const rec = (b as unknown) as { level: number; time: Date; msg: object };
 		const levels = {
+			fatal: ConsoleColor.RED,
 			error: ConsoleColor.RED,
 			info: ConsoleColor.BLUE,
 			warn: ConsoleColor.YELLOW,
 			debug: ConsoleColor.CYAN,
-        } as const;
+			trace: ConsoleColor.GRAY,
+		} as const;
 		console.log(
 			`${color(this.formatTime(new Date(+rec.time)), ConsoleColor.GRAY)} ${color(
 				Logger.nameFromLevel[rec.level],
@@ -48,12 +51,16 @@ class LogStream extends EventEmitter {
 		return true;
 	}
 }
+
+const prodStream = {
+	stream: process.stdout,
+};
+const devStream = {
+	type: 'raw',
+	stream: new LogStream(),
+};
+
 export const logger = new Logger({
 	name: 'app',
-	streams: [
-		{
-            type: 'raw',
-			stream: new LogStream(),
-		},
-	],
+	streams: [PRODUCTION ? prodStream : devStream],
 });

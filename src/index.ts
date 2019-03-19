@@ -1,5 +1,5 @@
-if (+process.versions.node.replace(/\.\d+$/, '') < 11) 
-    throw new Error(`Required version of node: >=11, current: ${process.versions.node}`);
+if (+process.versions.node.replace(/\.\d+$/, '') < 11)
+	throw new Error(`Required version of node: >=11, current: ${process.versions.node}`);
 import { logger } from './logger';
 import dotenv from 'dotenv';
 import Logger from 'bunyan';
@@ -9,7 +9,7 @@ import graphqlHTTP from 'express-graphql';
 import session, { SessionOptions } from 'express-session';
 import { Pool } from 'pg';
 import { createSchema } from 'ts2graphql';
-import { config } from './config';
+import { config, ENV, PRODUCTION } from './config';
 import { BaseClientError } from './errors';
 import { DBEntityNotFound } from './Orm';
 import { createDB, DB, SchemaConstraint, migrateUp, readMigrationsFromDir, query } from './Orm/PostgresqlDriver';
@@ -26,7 +26,6 @@ export * from './Orm';
 export * from './Orm/PostgresqlDriver';
 export { Logger };
 
-const ENV = process.env.NODE_ENV || 'development';
 const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
 envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
 export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
@@ -58,7 +57,6 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	express: Express.Express;
 }> {
 	logger.info('ENV=' + ENV);
-	const PRODUCTION = process.env.NODE_ENV === 'production';
 	const projectDir = dirname(require.main!.filename);
 
 	let db: DB<DBSchema> | undefined;
@@ -102,14 +100,17 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	const express = Express();
 	express.disable('x-powered-by');
 
-	express.use(
-		session({
-			name: 'sid',
-			secret: config.secret,
-			resave: true,
-			saveUninitialized: true,
-		}),
-	);
+	if (options.session) {
+		express.use(
+			session({
+				name: 'sid',
+				secret: config.secret,
+				resave: true,
+				saveUninitialized: true,
+				...options.session
+			}),
+		);
+	}
 
 	if (!PRODUCTION) {
 		express.use(cors());
