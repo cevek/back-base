@@ -1,5 +1,6 @@
 if (+process.versions.node.replace(/\.\d+$/, '') < 11)
 	throw new Error(`Required version of node: >=11, current: ${process.versions.node}`);
+import 'deps-check';
 import { logger } from './logger';
 import dotenv from 'dotenv';
 import Logger from 'bunyan';
@@ -107,7 +108,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				secret: config.secret,
 				resave: true,
 				saveUninitialized: true,
-				...options.session
+				...options.session,
 			}),
 		);
 	}
