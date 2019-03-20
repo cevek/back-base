@@ -1,25 +1,23 @@
 export type QueryResult<T, Keys extends keyof T> = [Keys] extends [never] ? T : Pick<T, Keys>;
 export type DBValue = DBValueBase | DBValueBase[];
 type DBValueBase = string | number | boolean | Date | undefined;
+export type Keys<T> = Extract<keyof T, string>;
 
 export type CollectionConstraint = { id: string; [key: string]: DBValue };
 export interface DBCollection<T extends CollectionConstraint> {
 	genId(): T['id'];
-	findById<Keys extends keyof T = never>(
-		id: T['id'],
-		other?: { select?: ReadonlyArray<Keys> },
-	): Promise<QueryResult<T, Keys>>;
-	findOne<Keys extends keyof T = never>(where: WhereOr<T>, other?: Other<T, Keys>): Promise<QueryResult<T, Keys>>;
-	findAll<Keys extends keyof T = never>(where: WhereOr<T>, other?: Other<T, Keys>): Promise<QueryResult<T, Keys>[]>;
+	findById<K extends Keys<T> = never>(id: T['id'], other?: { select?: ReadonlyArray<K> }): Promise<QueryResult<T, K>>;
+	findOne<K extends Keys<T> = never>(where: WhereOr<T>, other?: Other<T, K>): Promise<QueryResult<T, K>>;
+	findAll<K extends Keys<T> = never>(where: WhereOr<T>, other?: Other<T, K>): Promise<QueryResult<T, K>[]>;
 
-	findByIdOrNull<Keys extends keyof T = never>(
+	findByIdOrNull<K extends Keys<T> = never>(
 		id: T['id'],
-		other?: { select?: ReadonlyArray<Keys> },
-	): Promise<QueryResult<T, Keys> | undefined>;
-	findOneOrNull<Keys extends keyof T = never>(
+		other?: { select?: ReadonlyArray<K> },
+	): Promise<QueryResult<T, K> | undefined>;
+	findOneOrNull<K extends Keys<T> = never>(
 		where: WhereOr<T>,
-		other?: Other<T, Keys>,
-	): Promise<QueryResult<T, Keys> | undefined>;
+		other?: Other<T, K>,
+	): Promise<QueryResult<T, K> | undefined>;
 
 	update(id: T['id'], data: Partial<T>): Promise<void>;
 	remove(id: T['id']): Promise<void>;
@@ -92,9 +90,9 @@ export type WhereItem<T> = T extends number
 
 export type Where<T> = { [P in keyof T]?: T[P] | WhereItem<T[P]> };
 
-export type Other<T, Fields extends keyof T> = {
+export type Other<T, Fields extends Keys<T>> = {
 	select?: ReadonlyArray<Fields>;
-	order?: { desc?: keyof T; asc?: keyof T };
+	order?: { desc?: Keys<T>; asc?: Keys<T> };
 	limit?: number;
 	offset?: number;
 };

@@ -13,7 +13,7 @@ import { createSchema } from 'ts2graphql';
 import { config, ENV, PRODUCTION } from './config';
 import { BaseClientError } from './errors';
 import { DBEntityNotFound } from './Orm';
-import { createDB, DB, SchemaConstraint, migrateUp, readMigrationsFromDir, query } from './Orm/PostgresqlDriver';
+import { createDB, DB, SchemaConstraint, migrateUp, readMigrationsFromDir, sql } from './Orm/PostgresqlDriver';
 import { DBQueryError } from './Orm/Base';
 import { GraphQLError } from 'graphql';
 import { dirname } from 'path';
@@ -79,7 +79,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		}
 		while (true) {
 			try {
-				await db.query(query`SELECT 1`);
+				await db.query(sql`SELECT 1`);
 				break;
 			} catch (e) {
 				logger.info('Postgres is unavailable: ' + e.message);

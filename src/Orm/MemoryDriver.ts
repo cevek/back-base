@@ -1,5 +1,5 @@
 import DataLoader from 'dataloader';
-import { CollectionConstraint, DBCollection, DBEntityNotFound, Other, QueryResult, WhereOr } from './Base';
+import { CollectionConstraint, DBCollection, DBEntityNotFound, Other, QueryResult, WhereOr, Keys } from './Base';
 
 export type DB<Schema> = Collections<Schema> & { transaction: TransactionType<Schema> };
 export type SchemaConstraint = { [key: string]: CollectionConstraint };
@@ -25,17 +25,17 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 	genId() {
 		return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString() as T['id'];
 	}
-	async findById<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
+	async findById<K extends Keys<T>>(id: T['id'], other?: { select?: K[] }) {
 		const row = await this.findByIdOrNull(id, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(id));
 		return row;
 	}
-	async findOne<Keys extends keyof T>(where: WhereOr<T>, other?: Other<T, Keys>) {
+	async findOne<K extends Keys<T>>(where: WhereOr<T>, other?: Other<T, K>) {
 		const row = await this.findOneOrNull(where, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(where));
 		return row;
 	}
-	async findAll<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
+	async findAll<K extends Keys<T>>(where: WhereOr<T>, other: Other<T, K> = {}) {
 		function compare(row: T, whereOr: WhereOr<T>): boolean {
 			if (Array.isArray(whereOr)) return whereOr.some(where => compare(row, where));
 			for (const key in whereOr) {
@@ -55,20 +55,20 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 				rows.push(row[1]);
 			}
 		}
-		return rows as QueryResult<T, Keys>[];
+		return rows as QueryResult<T, K>[];
 	}
 
-	async findByIdOrNull<Keys extends keyof T>(id: T['id'], other?: { select?: Keys[] }) {
-		return this.loader.load(id) as Promise<QueryResult<T, Keys> | undefined>;
+	async findByIdOrNull<K extends Keys<T>>(id: T['id'], other?: { select?: K[] }) {
+		return this.loader.load(id) as Promise<QueryResult<T, K> | undefined>;
 	}
-	async findOneOrNull<Keys extends keyof T>(where: WhereOr<T>, other: Other<T, Keys> = {}) {
+	async findOneOrNull<K extends Keys<T>>(where: WhereOr<T>, other: Other<T, K> = {}) {
 		other.limit = 1;
 		const rows = await this.findAll(where, other);
 		return rows.length > 0 ? rows[0] : undefined;
 	}
 
 	async update(id: T['id'], data: Partial<T>) {
-		const item = await this.findById(id);
+		const item = await this.findById(id) as T;
 		const newData = { ...item, ...data };
 		this.map.set(id, newData);
 	}
