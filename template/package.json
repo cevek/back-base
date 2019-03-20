@@ -20,5 +20,8 @@
     },
     "dependencies": {
         "backend-base": ">1.0.0"
-    }
+    },
+    "devDependencies": {
+		"husky": ">=1.3.1"
+	}
 }
