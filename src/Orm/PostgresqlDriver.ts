@@ -43,11 +43,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 	private loader: DataLoader<T['id'], T | undefined>;
 	name: Column;
 	fields: { [P in keyof T]: Column };
-	constructor(
-		public collectionName: string,
-		private query: <T>(dbQuery: DBQuery) => Promise<T>,
-		prevCollection: Collection<T> | undefined,
-	) {
+	constructor(public collectionName: string, private query: QueryFun, prevCollection: Collection<T> | undefined) {
 		this.name = field(collectionName);
 		this.fields = new Proxy({} as this['fields'], {
 			get: (_, key: string) => sql`${this.name}.${field(key)}`,
@@ -57,11 +53,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 	}
 	private async loadById(ids: T['id'][]) {
 		const rows = await this.findAll({ id: { in: ids } } as Where<T>);
-		const res = (ids.slice() as unknown[]) as (T | undefined)[];
-		for (let i = 0; i < res.length; i++) {
-			res[i] = rows.find(row => row.id === ids[i]);
-		}
-		return res;
+		return ids.map(id => rows.find(row => row.id === id));
 	}
 	async findById<K extends Keys<T> = never>(id: T['id'], other?: { select?: K[] }) {
 		const row = await this.findByIdOrNull(id, other);
@@ -74,7 +66,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 		return row;
 	}
 	async findAll<K extends Keys<T> = never>(where: WhereOr<T>, other: Other<T, K> = {}) {
-		return this.query<QueryResult<T, K>[]>(
+		return this.query<QueryResult<T, K>>(
 			sql`SELECT ${prepareFields(other.select)} FROM ${this.name}${prepareWhereOr(where)}${prepareOther(other)}`,
 		);
 	}
@@ -303,16 +295,16 @@ function queryFactory(getClient: () => Promise<PoolClient>, release: boolean): Q
 		} catch (err) {
 			throw new DBQueryError(queryStr, values, (err as Error).message);
 		}
-		return (res.rows as unknown) as T;
+		return res.rows as T[];
 	};
 }
 
 type Pool = { connect: () => Promise<PoolClient> };
 type PoolClient = {
 	release: () => void;
-	query: (q: string, values?: unknown[]) => Promise<{ rows: unknown; command: string }>;
+	query: (q: string, values?: unknown[]) => Promise<{ rows: unknown[]; command: string }>;
 };
-type QueryFun = <T>(query: DBQuery) => Promise<T>;
+type QueryFun = <T>(query: DBQuery) => Promise<T[]>;
 
 export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {
 	const query = queryFactory(() => pool.connect(), true);
@@ -412,7 +404,7 @@ export async function migrateUp(
 ) {
 	await db.transaction(async trx => {
 		await createMigrationTable(trx);
-		const lastAppliedMigration = (await trx.query<{ name: string }[]>(
+		const lastAppliedMigration = (await trx.query<{ name: string }>(
 			sql`SELECT name FROM migrations ORDER BY id DESC LIMIT 1`,
 		)).pop();
 		if (migrations.length === 0) return;
