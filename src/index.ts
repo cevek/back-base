@@ -15,7 +15,7 @@ import { BaseClientError } from './errors';
 import { DBEntityNotFound } from './Orm';
 import { createDB, DB, SchemaConstraint, migrateUp, readMigrationsFromDir, sql } from './Orm/PostgresqlDriver';
 import { DBQueryError } from './Orm/Base';
-import { GraphQLError } from 'graphql';
+import { GraphQLError, GraphQLScalarType, Kind, printSchema } from 'graphql';
 import { dirname } from 'path';
 import { sleep } from './utils';
 
@@ -124,7 +124,41 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		express.use(bundler.middleware());
 	}
 
-	const schema = createSchema(options.graphql.schema);
+	const customTypeMap = new Map<string, GraphQLScalarType>();
+	function customScalarFactory(typeName: string) {
+		if (!/ID$/.test(typeName)) return;
+		if (customTypeMap.has(typeName)) return customTypeMap.get(typeName);
+		const type = GraphQLBigintTypeFactory(typeName);
+		customTypeMap.set(typeName, type);
+		return type;
+	}
+
+	const GraphQLBigintTypeFactory = (typeName: string) => {
+		return new GraphQLScalarType({
+			name: typeName,
+			serialize: value,
+			parseValue: value,
+			parseLiteral(ast) {
+				if (ast.kind === Kind.STRING) {
+					return value(ast.value);
+				}
+				return null;
+			},
+		});
+		function value(value: string) {
+			try {
+				if (BigInt(value) === 0n) throw 1;
+			} catch (e) {
+				throw new GraphQLError(`${typeName} should be numeric string: ${value}`);
+			}
+			return value;
+		}
+	};
+
+	const schema = createSchema(options.graphql.schema, {
+		customScalarFactory: type => (type.rawType !== undefined ? customScalarFactory(type.rawType) : undefined),
+	});
+	// console.log(printSchema(schema));
 	express.get(
 		'/api/graphql',
 		graphqlHTTP({
@@ -154,7 +188,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				}
 				/* istanbul ignore next */
 				if (error instanceof DBQueryError) {
-					logger.error('DBQuery error: ', error.query, error.values);
+					logger.error('DBQuery error: ' + error.error + '\n' + error.query + '\n', error.values);
 				} else {
 					logger.error(error);
 				}
