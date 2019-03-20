@@ -97,7 +97,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 	async remove(id: T['id']) {
 		await this.query(sql`DELETE FROM ${this.name}${prepareWhereOr({ id: id })}`);
 	}
-	async create(data: T, params: { noErrorIfConflict?: (Keys<T> | DBQuery) | true } = {}) {
+	async create(data: T, params: { noErrorIfConflict?: Keys<T> | DBQuery | true } = {}) {
 		const keys: Keys<T>[] = [];
 		const values: QueryValue[] = [];
 		for (const key in data) {
@@ -107,10 +107,13 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 		const keyQuery = joinQueries(keys.map(key => sql`${field(key)}`), sql`, `);
 		const valueQuery = joinQueries(values.map(val => sql`${val}`), sql`, `);
 		let onConflictFields;
-		if (params.noErrorIfConflict) {
+		if (params.noErrorIfConflict !== undefined) {
 			if (params.noErrorIfConflict === true) {
 				onConflictFields = sql``;
-			} else if (typeof params.noErrorIfConflict === 'string') {
+			}
+			// eslint-disable-next-line
+			else if (typeof params.noErrorIfConflict === 'string') {
+				var x: string = params.noErrorIfConflict;
 				onConflictFields = sql`(${field(params.noErrorIfConflict)})`;
 			} else {
 				onConflictFields = sql`(${params.noErrorIfConflict})`;
