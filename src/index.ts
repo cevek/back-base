@@ -1,50 +1,43 @@
 if (+process.versions.node.replace(/\.\d+$/, '') < 11)
 	throw new Error(`Required version of node: >=11, current: ${process.versions.node}`);
-import 'deps-check';
-import { logger } from './logger';
-import dotenv from 'dotenv';
 import Logger from 'bunyan';
 import cors from 'cors';
+import 'deps-check';
+import dotenv from 'dotenv';
 import Express from 'express';
 import graphqlHTTP from 'express-graphql';
 import session, { SessionOptions } from 'express-session';
-import { Pool } from 'pg';
+import { GraphQLError } from 'graphql';
+import { dirname } from 'path';
 import { createSchema } from 'ts2graphql';
 import { config, ENV, PRODUCTION } from './config';
+import { dbInit, DBOptions } from './dbInit';
 import { BaseClientError } from './errors';
+import { graphQLBigintTypeFactory } from './graphQLUtils';
+import { logger } from './logger';
 import { DBEntityNotFound } from './Orm';
-import { createDB, DB, SchemaConstraint, migrateUp, readMigrationsFromDir, sql } from './Orm/PostgresqlDriver';
 import { DBQueryError } from './Orm/Base';
-import { GraphQLError, GraphQLScalarType, Kind, printSchema } from 'graphql';
-import { dirname } from 'path';
-import { sleep } from './utils';
+import { DB, SchemaConstraint } from './Orm/PostgresqlDriver';
 
-export * from './utils';
-export * from './graphQLUtils';
-export * from './testUtils';
 export * from './errors';
+export * from './graphQLUtils';
 export * from './Orm';
 export * from './Orm/PostgresqlDriver';
+export * from './request';
+export * from './testUtils';
+export * from './utils';
 export { Logger };
 
 const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
 envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
 export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
 	session?: SessionOptions;
-	db?: {
-		user: string;
-		password: string;
-		database: string;
-		host?: string;
-		port?: number | string | number;
-		schema: string;
-		errorEntityNotFound: unknown;
-	};
+	db?: DBOptions;
 	graphql: {
 		schema: string;
-		values: object;
+		resolvers: object;
 	};
-	bundler?: {
+	parcel?: {
 		indexFilename: string;
 	};
 	logger?: {};
@@ -62,41 +55,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 
 	let db: DB<DBSchema> | undefined;
 	if (options.db) {
-		db = await createDB<DBSchema>(
-			new Pool({
-				password: validate(options.db.password, 'password'),
-				user: validate(options.db.user, 'user'),
-				database: validate(options.db.database, 'name'),
-				host: options.db.host,
-				port: typeof options.db.port === 'string' ? Number(options.db.port) : options.db.port,
-			}),
-		);
-		function validate(str: string, field: string) {
-			if (typeof str !== 'string') {
-				throw new Error(`db ${field} is incorrect: ${str}`);
-			}
-			return str;
-		}
-		while (true) {
-			try {
-				await db.query(sql`SELECT 1`);
-				break;
-			} catch (e) {
-				logger.info('Postgres is unavailable: ' + e.message);
-				await sleep(1000);
-			}
-		}
-		try {
-			const migrations = await readMigrationsFromDir(projectDir + '/../migrations/');
-			await migrateUp(db, migrations, logger);
-		} catch (e) {
-			if (e instanceof DBQueryError) {
-				logger.error('Migration error: ' + e.error);
-			} else {
-				logger.error('Migration error', e);
-			}
-			throw e;
-		}
+		await dbInit(projectDir, options.db);
 	}
 	const express = Express();
 	express.disable('x-powered-by');
@@ -116,63 +75,33 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	if (!PRODUCTION) {
 		express.use(cors());
 	}
-	if (options.bundler) {
+	if (options.parcel) {
 		const Bundler = require('parcel-bundler');
-		const bundler = new Bundler(options.bundler.indexFilename, { cache: false }) as {
+		const bundler = new Bundler(options.parcel.indexFilename, { cache: false }) as {
 			middleware(): Express.RequestHandler;
 		};
 		express.use(bundler.middleware());
 	}
 
-	const customTypeMap = new Map<string, GraphQLScalarType>();
-	function customScalarFactory(typeName: string) {
-		if (!/ID$/.test(typeName)) return;
-		if (customTypeMap.has(typeName)) return customTypeMap.get(typeName);
-		const type = GraphQLBigintTypeFactory(typeName);
-		customTypeMap.set(typeName, type);
-		return type;
-	}
-
-	const GraphQLBigintTypeFactory = (typeName: string) => {
-		return new GraphQLScalarType({
-			name: typeName,
-			serialize: value,
-			parseValue: value,
-			parseLiteral(ast) {
-				if (ast.kind === Kind.STRING) {
-					return value(ast.value);
-				}
-				return null;
-			},
-		});
-		function value(value: string) {
-			try {
-				if (BigInt(value) === 0n) throw 1;
-			} catch (e) {
-				throw new GraphQLError(`${typeName} should be numeric string: ${value}`);
-			}
-			return value;
-		}
-	};
-
 	const schema = createSchema(options.graphql.schema, {
-		customScalarFactory: type => (type.rawType !== undefined ? customScalarFactory(type.rawType) : undefined),
+		customScalarFactory: type =>
+			type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
 	});
 	// console.log(printSchema(schema));
-	express.get(
-		'/api/graphql',
-		graphqlHTTP({
-			schema: schema,
-			rootValue: options.graphql.values,
-			graphiql: true,
-		}),
-	);
+	// express.get(
+	// 	'/api/graphql',
+	// 	graphqlHTTP({
+	// 		schema: schema,
+	// 		rootValue: options.graphql.resolvers,
+	// 		graphiql: true,
+	// 	}),
+	// );
 
 	express.post(
 		'/api/graphql',
 		graphqlHTTP({
 			schema: schema,
-			rootValue: options.graphql.values,
+			rootValue: options.graphql.resolvers,
 			formatError(err) {
 				const error = err.originalError || err;
 				if (error instanceof GraphQLError) {
