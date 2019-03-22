@@ -1,6 +1,6 @@
 import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
 
-export type QueryResult<T, Context> = {
+export type RootResolver<T, Context> = {
 	[P in keyof T]: T[P] extends (args: infer Args) => infer R ? (args: Args, ctx: Context) => Return<R> : never
 };
 

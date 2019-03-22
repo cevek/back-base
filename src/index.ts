@@ -35,7 +35,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	db?: DBOptions;
 	graphql: {
 		schema: string;
-		resolvers: object;
+		resolver: object;
 	};
 	parcel?: {
 		indexFilename: string;
@@ -101,7 +101,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		'/api/graphql',
 		graphqlHTTP({
 			schema: schema,
-			rootValue: options.graphql.resolvers,
+			rootValue: options.graphql.resolver,
 			formatError(err) {
 				const error = err.originalError || err;
 				if (error instanceof GraphQLError) {

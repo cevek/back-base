@@ -1,4 +1,4 @@
-import {QueryParameters, QueryResult, removeItemOrNever, Return} from 'backend-base';
+import {QueryParameters, RootResolver, removeItemOrNever, Return} from 'backend-base';
 import {TodoID, TodoListID, User} from './DBSchema';
 import {ClientError, Errors} from './Errors';
 import {Account, Mutation, Query, Todo, TodoList} from './GraphQLSchema';
@@ -25,7 +25,7 @@ export interface ContextWithUser {
 
 type Params = QueryParameters<Query & Mutation>;
 
-export const GraphQLValues: QueryResult<Query & Mutation, Context> = {
+export const graphQLResolver: RootResolver<Query & Mutation, Context> = {
     login,
     register,
     logout: withAuth(logout),

@@ -3,7 +3,7 @@ import {config} from './config';
 import {DBSchema} from './DBSchema';
 import {Errors} from './Errors';
 import {setGlobalDB, setGlobalLogger} from './globals';
-import {GraphQLValues} from './GraphQLResolvers';
+import {graphQLResolver} from './resolvers';
 
 async function main() {
     const app = await createGraphqApp<DBSchema>({
@@ -13,7 +13,7 @@ async function main() {
         logger: {},
         graphql: {
             schema: require.resolve('./GraphQLSchema.d.ts'),
-            resolvers: GraphQLValues,
+            resolver: graphQLResolver,
         },
         db: {
             user: process.env.DB_USER!,
