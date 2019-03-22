@@ -5,9 +5,9 @@ import { sleep } from './utils';
 import { DBQueryError } from './Orm/Base';
 
 export interface DBOptions {
-	user: string;
-	password: string;
-	database: string;
+	user: string | undefined;
+	password: string | undefined;
+	database: string | undefined;
 	host?: string;
 	port?: number | string | number;
 	schema: string;
@@ -23,7 +23,7 @@ export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: stri
 			port: typeof options.port === 'string' ? Number(options.port) : options.port,
 		}),
 	);
-	function validate(str: string, field: string) {
+	function validate(str: string | undefined, field: string) {
 		if (typeof str !== 'string') throw new Error(`db ${field} is incorrect: ${str}`);
 		return str;
 	}

@@ -31,7 +31,7 @@ class LogStream extends EventEmitter {
 		return `+${Math.round(ms / 10) * 10}ms`;
 	}
 	write(b: string | Buffer) {
-		const rec = (b as unknown) as { level: number; time: Date; msg: object };
+		const rec = (b as unknown) as { level: number; time: Date; msg: object; err?: Error };
 		const levels = {
 			fatal: ConsoleColor.RED,
 			error: ConsoleColor.RED,
@@ -46,6 +46,7 @@ class LogStream extends EventEmitter {
 				levels[Logger.nameFromLevel[rec.level] as keyof typeof levels],
 			)}`,
 			rec.msg,
+			rec.err ? `\n${rec.err.stack}` : '',
 		);
 		this.prevTime = rec.time;
 		return true;

@@ -6,7 +6,7 @@ export class TestSession {
 	constructor(public port: number) {}
 	async query<T>(query: string, error = '', result?: {}): Promise<T> {
 		const res = await this.req<{ data: T; errors: {}[] }>('/api/graphql', { query });
-		const errorMsg = res.errors && res.errors[0];
+		const errorMsg = res.data.errors && res.data.errors[0];
 		/* istanbul ignore next */
 		if (error) {
 			if (!errorMsg) throw new Error(`Should be error: "${error}", got nothing, query: ${query}`);
@@ -22,7 +22,7 @@ export class TestSession {
 			const expect = JSON.stringify(result);
 			throw new Error(`Result is not the same: \n${expect}\ngot:\n${got}\nquery: ${query}`);
 		}
-		return res.data;
+		return res.data.data;
 	}
 	private req<T>(url: string, json: {}) {
 		return requestJSON<T>(`http://localhost:${this.port}${url}`, { method: 'post', jar: this.jar, json });

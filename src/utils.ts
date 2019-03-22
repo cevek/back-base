@@ -29,3 +29,11 @@ export function never(never?: never): never {
 export function sleep(ms: number) {
 	return new Promise(res => setTimeout(res, ms));
 }
+
+export function assert(val: boolean, msg = 'Assertaion failed') {
+	if (!val) throw new Error(msg);
+}
+export function nonNull<T>(val: T | undefined, msg = 'value cannot be undefined'): T {
+	if (val === undefined) throw new Error(msg);
+	return val;
+}
