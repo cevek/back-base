@@ -57,7 +57,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 
 	let db: BaseDB<DBSchema> | undefined;
 	if (options.db) {
-		await dbInit(projectDir, options.db);
+		db = await dbInit(projectDir, options.db);
 	}
 	const express = Express();
 	express.disable('x-powered-by');

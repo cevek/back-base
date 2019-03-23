@@ -1,8 +1,9 @@
-import {createGraphqApp, getEnv, getEnvNullable} from 'backend-base';
+import {createGraphqApp, getEnv, getEnvNullable, setService} from 'backend-base';
 import {config} from './config';
 import {DBSchema} from './DBSchema';
 import {Errors} from './Errors';
 import {graphQLResolver} from './resolvers';
+import {DB} from './DB';
 
 async function main() {
     const app = await createGraphqApp<DBSchema>({
@@ -23,6 +24,7 @@ async function main() {
         },
         port: config.port,
     });
+    setService(DB, app.db);
 }
 
 main().catch(err => console.error(err));
