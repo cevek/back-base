@@ -17,9 +17,9 @@ import { graphQLBigintTypeFactory } from './graphQLUtils';
 import { logger } from './logger';
 import { DBEntityNotFound } from './Orm';
 import { DBQueryError } from './Orm/Base';
-import { DB, SchemaConstraint } from './Orm/PostgresqlDriver';
-import { cleanStackTrace } from './cleanStackTrace';
+import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
 
+export * from './di';
 export * from './errors';
 export * from './graphQLUtils';
 export * from './Orm';
@@ -27,8 +27,8 @@ export * from './Orm/PostgresqlDriver';
 export * from './request';
 export * from './testUtils';
 export * from './utils';
-export * from './di';
-export { Logger };
+
+export { logger } from './logger';
 
 const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
 envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
@@ -43,20 +43,19 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	parcel?: {
 		indexFilename: string;
 	};
-	logger?: {};
 	errors: {
 		unknown: unknown;
 	};
 	port: number;
 }): Promise<{
 	logger: Logger;
-	db: DB<DBSchema>;
+	db: BaseDB<DBSchema>;
 	express: Express.Express;
 }> {
 	logger.info('ENV=' + ENV);
 	const projectDir = dirname(require.main!.filename);
 
-	let db: DB<DBSchema> | undefined;
+	let db: BaseDB<DBSchema> | undefined;
 	if (options.db) {
 		await dbInit(projectDir, options.db);
 	}

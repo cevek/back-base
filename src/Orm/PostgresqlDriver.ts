@@ -15,7 +15,7 @@ import {
 } from './Base';
 import { readdir, readFile } from 'fs-extra';
 
-export type DB<Schema> = Collections<Schema> & {
+export type BaseDB<Schema> = Collections<Schema> & {
 	transaction: TransactionFun<Schema>;
 	query: QueryFun;
 };
@@ -333,16 +333,16 @@ export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {
 	return db;
 }
 
-function createProxy<Schema extends SchemaConstraint>(rootDB: DB<Schema> | undefined, query: QueryFun) {
+function createProxy<Schema extends SchemaConstraint>(rootDB: BaseDB<Schema> | undefined, query: QueryFun) {
 	type CollectionType = Schema[keyof Schema];
-	const db = { query, transaction: {} } as DB<Schema>;
+	const db = { query, transaction: {} } as BaseDB<Schema>;
 	return new Proxy(db, {
 		get(_, key: keyof Schema) {
 			const collection = maybe(db[key]);
 			if (collection === undefined) {
 				const prevCollection = rootDB === undefined ? undefined : (rootDB[key] as Collection<CollectionType>);
 				const newCollection = new Collection<CollectionType>(key as string, query, prevCollection);
-				db[key] = newCollection as DB<Schema>[keyof Schema];
+				db[key] = newCollection as BaseDB<Schema>[keyof Schema];
 				return newCollection;
 			}
 			return collection;
@@ -401,7 +401,7 @@ export async function readMigrationsFromDir(dir: string) {
 }
 
 export async function migrateUp(
-	db: DB<unknown>,
+	db: BaseDB<unknown>,
 	migrations: Migration[],
 	logger: { info: (...args: unknown[]) => void },
 ) {

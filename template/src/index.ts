@@ -2,7 +2,6 @@ import {createGraphqApp, getEnv, getEnvNullable} from 'backend-base';
 import {config} from './config';
 import {DBSchema} from './DBSchema';
 import {Errors} from './Errors';
-import {setGlobalDB, setGlobalLogger} from './globals';
 import {graphQLResolver} from './resolvers';
 
 async function main() {
@@ -10,7 +9,6 @@ async function main() {
         session: {
             secret: config.secret,
         },
-        logger: {},
         graphql: {
             schema: require.resolve('./GraphQLSchema.d.ts'),
             resolver: graphQLResolver,
@@ -25,9 +23,6 @@ async function main() {
         },
         port: config.port,
     });
-
-    setGlobalLogger(app.logger);
-    setGlobalDB(app.db);
 }
 
 main().catch(err => console.error(err));

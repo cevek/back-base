@@ -2,7 +2,6 @@ import Logger from 'bunyan';
 import { EventEmitter } from 'events';
 import { PRODUCTION } from './config';
 import { cleanStackTrace } from './cleanStackTrace';
-import { stringify } from 'querystring';
 
 export class JsonError extends Error {
 	constructor(msg: string, public json: object) {

@@ -15,6 +15,8 @@ export interface DBOptions {
 	schema: string;
 	errorEntityNotFound: unknown;
 }
+
+
 export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: string, options: DBOptions) {
 	const config = options.config;
 	const db = await createDB<DBSchema>(
