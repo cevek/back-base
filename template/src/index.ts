@@ -1,4 +1,4 @@
-import {createGraphqApp} from 'backend-base';
+import {createGraphqApp, getEnv, getEnvNullable} from 'backend-base';
 import {config} from './config';
 import {DBSchema} from './DBSchema';
 import {Errors} from './Errors';
@@ -16,11 +16,7 @@ async function main() {
             resolver: graphQLResolver,
         },
         db: {
-            user: process.env.DB_USER!,
-            password: process.env.DB_PASSWORD!,
-            database: process.env.DB_NAME!,
-            host: process.env.DB_HOST,
-            port: process.env.DB_PORT,
+            config: config.db,
             schema: require.resolve('./DBSchema.d.ts'),
             errorEntityNotFound: Errors.EntityNotFound,
         },

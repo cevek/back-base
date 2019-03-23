@@ -1,3 +1,5 @@
+import { createVerify } from 'crypto';
+
 /* istanbul ignore next */
 export function lastItem<T>(arr: ReadonlyArray<T>): T {
 	return arr.length === 0 ? undefined! : arr[arr.length - 1];
@@ -36,4 +38,30 @@ export function assert(val: boolean, msg = 'Assertaion failed') {
 export function nonNull<T>(val: T | undefined, msg = 'value cannot be undefined'): T {
 	if (val === undefined) throw new Error(msg);
 	return val;
+}
+
+export function verifySignature(data: string, signatureBase64: string, publicKey: string) {
+	const verifier = createVerify('SHA256');
+	verifier.update(data);
+	return verifier.verify(publicKey, signatureBase64, 'base64');
+}
+
+export function normalToWebSafeBase64(normalBase64: string) {
+	return normalBase64
+		.replace(/\+/g, '-')
+		.replace(/\//g, '_')
+		.replace(/=+$/, '');
+}
+
+export function webSafeToNormalBase64(safeBase64: string) {
+	return safeBase64.replace(/\-/g, '+').replace(/_/g, '/') + '=='.substring(0, (3 * safeBase64.length) % 4);
+}
+
+export function getEnv(name: string) {
+	const val = process.env[name];
+	if (val === undefined) throw new Error(`Env variable ${name} should be specified`);
+	return val;
+}
+export function getEnvNullable(name: string) {
+	return process.env[name];
 }

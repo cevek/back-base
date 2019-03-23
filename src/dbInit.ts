@@ -5,28 +5,27 @@ import { sleep } from './utils';
 import { DBQueryError } from './Orm/Base';
 
 export interface DBOptions {
-	user: string | undefined;
-	password: string | undefined;
-	database: string | undefined;
-	host?: string;
-	port?: number | string | number;
+	config: {
+		user: string | undefined;
+		password: string | undefined;
+		database: string | undefined;
+		host?: string;
+		port?: number | string | number;
+	};
 	schema: string;
 	errorEntityNotFound: unknown;
 }
 export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: string, options: DBOptions) {
+	const config = options.config;
 	const db = await createDB<DBSchema>(
 		new Pool({
-			password: validate(options.password, 'password'),
-			user: validate(options.user, 'user'),
-			database: validate(options.database, 'name'),
-			host: options.host,
-			port: typeof options.port === 'string' ? Number(options.port) : options.port,
+			password: config.password,
+			user: config.user,
+			database: config.database,
+			host: config.host,
+			port: typeof config.port === 'string' ? Number(config.port) : config.port,
 		}),
 	);
-	function validate(str: string | undefined, field: string) {
-		if (typeof str !== 'string') throw new Error(`db ${field} is incorrect: ${str}`);
-		return str;
-	}
 	while (true) {
 		try {
 			await db.query(sql`SELECT 1`);
