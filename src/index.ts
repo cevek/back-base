@@ -18,6 +18,7 @@ import { logger } from './logger';
 import { DBEntityNotFound } from './Orm';
 import { DBQueryError } from './Orm/Base';
 import { DB, SchemaConstraint } from './Orm/PostgresqlDriver';
+import { cleanStackTrace } from './cleanStackTrace';
 
 export * from './errors';
 export * from './graphQLUtils';
@@ -26,10 +27,12 @@ export * from './Orm/PostgresqlDriver';
 export * from './request';
 export * from './testUtils';
 export * from './utils';
+export * from './di';
 export { Logger };
 
 const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
 envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
+
 export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
 	session?: SessionOptions;
 	db?: DBOptions;
@@ -142,3 +145,13 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		db: db!,
 	};
 }
+
+process.on('unhandledRejection', (reason, p) => {
+	logger.warn({ err: reason }, 'Unhandled Promise rejection');
+});
+process.on('uncaughtException', err => {
+	logger.error(err);
+});
+process.on('warning', warning => {
+	logger.warn(warning);
+});
