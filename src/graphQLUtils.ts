@@ -8,7 +8,10 @@ export type QueryParameters<Q> = { [P in keyof Q]: Q[P] extends (args: infer Arg
 
 type PromisifyObj<T> = { [P in keyof T]: PromisifyValue<T[P]> };
 type Obj<T> = PromisifyObj<T> | Promise<PromisifyObj<T>> | (() => PromisifyObj<T>) | (() => Promise<PromisifyObj<T>>);
-type PromisifyValue<T> = [T] extends [object] ? (T extends Date ? Date : Obj<T>) : T;
+type PromisifyPrimitive<T> = T | Promise<T> | (() => T) | (() => Promise<T>);
+type PromisifyValue<T> = [T] extends [object]
+	? (T extends Date ? PromisifyPrimitive<Date> : Obj<T>)
+	: PromisifyPrimitive<T>;
 
 export type Return<T> = Promise<[T] extends [object] ? ([T] extends [Date] ? Date : PromisifyObj<T>) : T>;
 

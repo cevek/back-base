@@ -89,16 +89,16 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		customScalarFactory: type =>
 			type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
 	});
-	// console.log(printSchema(schema));
-	// express.get(
-	// 	'/api/graphql',
-	// 	graphqlHTTP({
-	// 		schema: schema,
-	// 		rootValue: options.graphql.resolvers,
-	// 		graphiql: true,
-	// 	}),
-	// );
 
+	// console.log(printSchema(schema));
+	express.get(
+		'/api/graphql',
+		graphqlHTTP({
+			schema: schema,
+			rootValue: options.graphql.resolver,
+			graphiql: true,
+		}),
+	);
 	express.post(
 		'/api/graphql',
 		graphqlHTTP({
@@ -154,3 +154,9 @@ process.on('uncaughtException', err => {
 process.on('warning', warning => {
 	logger.warn(warning);
 });
+
+const x = { a: 1, b: 2, c: 3 };
+// type Limit<T> = Exclude<T>
+
+function foo<T>(x: { a: number; b: number } | T) {}
+foo({ ...x });
