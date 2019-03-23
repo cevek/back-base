@@ -6,6 +6,8 @@
 		"jsx": "react",
 		"strict": true,
 		"resolveJsonModule": true,
+		"experimentalDecorators": true,
 		"esModuleInterop": true
-	}
+	},
+	"exclude": ["node_modules", "dist"]
 }
