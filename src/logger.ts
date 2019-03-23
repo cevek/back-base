@@ -1,6 +1,14 @@
 import Logger from 'bunyan';
 import { EventEmitter } from 'events';
 import { PRODUCTION } from './config';
+import { cleanStackTrace } from './cleanStackTrace';
+import { stringify } from 'querystring';
+
+export class JsonError extends Error {
+	constructor(msg: string, public json: object) {
+		super(msg);
+	}
+}
 
 enum ConsoleColor {
 	GRAY = 0,
@@ -31,7 +39,16 @@ class LogStream extends EventEmitter {
 		return `+${Math.round(ms / 10) * 10}ms`;
 	}
 	write(b: string | Buffer) {
-		const rec = (b as unknown) as { level: number; time: Date; msg: object; err?: Error };
+		const rec = (b as unknown) as {
+			level: number;
+			time: Date;
+			v: string;
+			pid: string;
+			name: string;
+			hostname: string;
+			msg: object;
+			err?: Error;
+		};
 		const levels = {
 			fatal: ConsoleColor.RED,
 			error: ConsoleColor.RED,
@@ -40,13 +57,17 @@ class LogStream extends EventEmitter {
 			debug: ConsoleColor.CYAN,
 			trace: ConsoleColor.GRAY,
 		} as const;
+		const { name, level, hostname, pid, v, time, msg, err, ...other } = rec;
+		let data = other;
+		if (err instanceof JsonError) data = { ...other, ...err.json };
 		console.log(
 			`${color(this.formatTime(new Date(+rec.time)), ConsoleColor.GRAY)} ${color(
-				Logger.nameFromLevel[rec.level],
-				levels[Logger.nameFromLevel[rec.level] as keyof typeof levels],
+				Logger.nameFromLevel[level],
+				levels[Logger.nameFromLevel[level] as keyof typeof levels],
 			)}`,
-			rec.msg,
-			rec.err ? `\n${rec.err.stack}` : '',
+			msg,
+			Object.keys(data).length === 0 ? '' : data,
+			err ? `\n${cleanStackTrace(err.stack)}` : '',
 		);
 		this.prevTime = rec.time;
 		return true;
@@ -64,4 +85,7 @@ const devStream = {
 export const logger = new Logger({
 	name: 'app',
 	streams: [PRODUCTION ? prodStream : devStream],
+	serializers: {
+		err: err => err,
+	},
 });
