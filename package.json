@@ -1,6 +1,6 @@
 {
 	"name": "backend-base",
-	"version": "1.0.5",
+	"version": "1.0.8",
 	"description": "",
 	"main": "dist/index",
 	"types": "dist/index",
@@ -24,12 +24,14 @@
 		"base": "dist/cli.js"
 	},
 	"files": [
+		"src",
 		"dist",
 		"template",
 		"tsconfig.base.json",
 		"*.js"
 	],
 	"dependencies": {
+		"@types/body-parser": "^1.17.0",
 		"@types/bunyan": ">=1.8.6",
 		"@types/cors": ">2.8.3",
 		"@types/dotenv": ">=6.1.0",
@@ -44,6 +46,7 @@
 		"@types/request": ">2.48.0",
 		"@typescript-eslint/eslint-plugin": ">1.4.0",
 		"@typescript-eslint/eslint-plugin-tslint": ">1.4.0",
+		"body-parser": "^1.18.3",
 		"bunyan": ">1.8.0",
 		"cors": ">2.8.0",
 		"dataloader": ">=1.4.0",

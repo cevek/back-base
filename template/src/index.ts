@@ -1,4 +1,4 @@
-import {createGraphqApp, getEnv, getEnvNullable, setService} from 'backend-base';
+import {createGraphqApp, logger, setService} from 'backend-base';
 import {config} from './config';
 import {DBSchema} from './DBSchema';
 import {Errors} from './Errors';
@@ -27,4 +27,4 @@ async function main() {
     setService(DB, app.db);
 }
 
-main().catch(err => console.error(err));
+main().catch(err => logger.error(err));

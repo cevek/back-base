@@ -1,16 +1,19 @@
 if (+process.versions.node.replace(/\.\d+$/, '') < 11)
 	throw new Error(`Required version of node: >=11, current: ${process.versions.node}`);
-import Logger from 'bunyan';
+
+import dotenv from 'dotenv';
+export const ENV = process.env.NODE_ENV || 'development';
+const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
+envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
+
 import cors from 'cors';
 import 'deps-check';
-import dotenv from 'dotenv';
 import Express from 'express';
 import graphqlHTTP from 'express-graphql';
 import session, { SessionOptions } from 'express-session';
 import { GraphQLError } from 'graphql';
 import { dirname } from 'path';
 import { createSchema } from 'ts2graphql';
-import { config, ENV, PRODUCTION } from './config';
 import { dbInit, DBOptions } from './dbInit';
 import { BaseClientError } from './errors';
 import { graphQLBigintTypeFactory } from './graphQLUtils';
@@ -18,6 +21,7 @@ import { logger } from './logger';
 import { DBEntityNotFound } from './Orm';
 import { DBQueryError } from './Orm/Base';
 import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
+import * as bodyparser from 'body-parser';
 
 export * from './di';
 export * from './errors';
@@ -27,11 +31,12 @@ export * from './Orm/PostgresqlDriver';
 export * from './request';
 export * from './testUtils';
 export * from './utils';
+export * from './dateUtils';
+export const bodyParser = bodyparser;
 
-export { logger } from './logger';
+export { logger, JsonError } from './logger';
 
-const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
-envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
+export const PRODUCTION = ENV === 'production';
 
 export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
 	session?: SessionOptions;
@@ -48,7 +53,6 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	};
 	port: number;
 }): Promise<{
-	logger: Logger;
 	db: BaseDB<DBSchema>;
 	express: Express.Express;
 }> {
@@ -66,7 +70,6 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		express.use(
 			session({
 				name: 'sid',
-				secret: config.secret,
 				resave: true,
 				saveUninitialized: true,
 				...options.session,
@@ -128,10 +131,16 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		}),
 	);
 
-	/* istanbul ignore next */
-	express.use((err: any, _: Express.Request, res: Express.Response, _next: Express.NextFunction) => {
-		logger.error(err);
-		return res.status(500).send({ status: 'error', error: '' });
+	setTimeout(() => {
+		/* istanbul ignore next */
+		express.use((err: any, req: Express.Request, res: Express.Response, next: Express.NextFunction) => {
+			logger.error(err);
+			if (res.headersSent) {
+				return next(err);
+			}
+			res.status(500);
+			res.send({ status: 'error' });
+		});
 	});
 
 	express.listen(options.port, () =>
@@ -140,8 +149,13 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 
 	return {
 		express,
-		logger,
 		db: db!,
+	};
+}
+
+export function asyncMiddleware(fn: (req: Express.Request, res: Express.Response) => Promise<unknown>): Express.Handler {
+	return (req, res, next) => {
+		fn(req, res).then(next, next);
 	};
 }
 
@@ -154,9 +168,3 @@ process.on('uncaughtException', err => {
 process.on('warning', warning => {
 	logger.warn(warning);
 });
-
-const x = { a: 1, b: 2, c: 3 };
-// type Limit<T> = Exclude<T>
-
-function foo<T>(x: { a: number; b: number } | T) {}
-foo({ ...x });

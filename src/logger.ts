@@ -1,7 +1,7 @@
-import Logger from 'bunyan';
+import Logger, { LogLevel } from 'bunyan';
 import { EventEmitter } from 'events';
-import { PRODUCTION } from './config';
 import { cleanStackTrace } from './cleanStackTrace';
+import { getEnvNullable, getEnv } from './utils';
 
 export class JsonError extends Error {
 	constructor(msg: string, public json: object) {
@@ -74,16 +74,18 @@ class LogStream extends EventEmitter {
 }
 
 const prodStream = {
+	level: (getEnvNullable('LOG_LEVEL') || 'info') as LogLevel,
 	stream: process.stdout,
 };
 const devStream = {
 	type: 'raw',
+	level: (getEnvNullable('LOG_LEVEL') || 'info') as LogLevel,
 	stream: new LogStream(),
 };
 
 export const logger = new Logger({
 	name: 'app',
-	streams: [PRODUCTION ? prodStream : devStream],
+	streams: [process.env.NODE_ENV === 'production' ? prodStream : devStream],
 	serializers: {
 		err: err => err,
 	},
