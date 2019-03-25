@@ -138,7 +138,7 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 }
 
 function prepareFields(fields: ReadonlyArray<string | DBQuery> | undefined) {
-	return fields ? joinQueries(fields.map(f => sql`{typeof f === 'string' ? field(f) : f}`), sql`, `) : sql`*`;
+	return fields ? joinQueries(fields.map(f => sql`${typeof f === 'string' ? field(f) : f}`), sql`, `) : sql`*`;
 }
 
 function prepareWhereOr(where: WhereOr<CollectionConstraint>) {
