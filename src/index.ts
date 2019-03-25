@@ -22,6 +22,7 @@ import { DBEntityNotFound } from './Orm';
 import { DBQueryError } from './Orm/Base';
 import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
 import * as bodyparser from 'body-parser';
+import serveStatic from 'serve-static';
 
 export * from './di';
 export * from './errors';
@@ -44,6 +45,10 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	graphql: {
 		schema: string;
 		resolver: object;
+	};
+	static?: {
+		rootDir: string;
+		options?: serveStatic.ServeStaticOptions;
 	};
 	parcel?: {
 		indexFilename: string;
@@ -75,6 +80,10 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				...options.session,
 			}),
 		);
+	}
+
+	if (options.static) {
+		express.use(serveStatic(options.static.rootDir, options.static.options));
 	}
 
 	if (!PRODUCTION) {
@@ -153,9 +162,13 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	};
 }
 
-export function asyncMiddleware(fn: (req: Express.Request, res: Express.Response) => Promise<unknown>): Express.Handler {
+export function asyncMiddleware(
+	fn: (req: Express.Request, res: Express.Response) => Promise<unknown>,
+): Express.Handler {
 	return (req, res, next) => {
-		fn(req, res).then(next, next);
+		fn(req, res).then(ret => {
+			res.send(ret || { status: 'ok' });
+		}, next);
 	};
 }
 
