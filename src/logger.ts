@@ -2,6 +2,7 @@ import Logger, { LogLevel } from 'bunyan';
 import { EventEmitter } from 'events';
 import { cleanStackTrace } from './cleanStackTrace';
 import { getEnvNullable, getEnv } from './utils';
+import { inspect } from 'util';
 
 export class JsonError extends Error {
 	constructor(msg: string, public json: object) {
@@ -65,7 +66,8 @@ class LogStream extends EventEmitter {
 				levels[Logger.nameFromLevel[level] as keyof typeof levels],
 			)}`,
 			msg,
-			Object.keys(data).length === 0 ? '' : data,
+			
+			Object.keys(data).length === 0 ? '' : inspect(data, {compact: false, depth: 20, colors: true}),
 			err ? `\n${cleanStackTrace(err.stack)}` : '',
 		);
 		this.prevTime = rec.time;
