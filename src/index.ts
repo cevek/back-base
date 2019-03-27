@@ -126,7 +126,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 					return error.id;
 				}
 				if (options.db && error instanceof DBEntityNotFound) {
-					logger.error(error.message);
+					logger.warn(error.message);
 					return options.db.errorEntityNotFound;
 				}
 				/* istanbul ignore next */
