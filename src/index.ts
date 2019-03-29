@@ -102,6 +102,24 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 			type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
 	});
 
+	function handleError(error: Error) {
+		debugger;
+		if (error instanceof BaseClientError) {
+			return { error: error.id, status: 400 };
+		}
+		if (options.db && error instanceof DBEntityNotFound) {
+			logger.warn(error.message);
+			return { error: options.db.errorEntityNotFound, status: 400 };
+		}
+		/* istanbul ignore next */
+		if (error instanceof DBQueryError) {
+			logger.error('DBQuery error: ' + error.error + '\n' + error.query + '\n', error.values);
+		} else {
+			logger.error(error);
+		}
+		return { error: options.errors.unknown, status: 500 };
+	}
+
 	// console.log(printSchema(schema));
 	express.get(
 		'/api/graphql',
@@ -121,21 +139,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 				if (error instanceof GraphQLError) {
 					return error;
 				}
-				debugger;
-				if (error instanceof BaseClientError) {
-					return error.id;
-				}
-				if (options.db && error instanceof DBEntityNotFound) {
-					logger.warn(error.message);
-					return options.db.errorEntityNotFound;
-				}
-				/* istanbul ignore next */
-				if (error instanceof DBQueryError) {
-					logger.error('DBQuery error: ' + error.error + '\n' + error.query + '\n', error.values);
-				} else {
-					logger.error(error);
-				}
-				return options.errors.unknown;
+				return handleError(error).error;
 			},
 		}),
 	);
@@ -147,8 +151,9 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 			if (res.headersSent) {
 				return next(err);
 			}
-			res.status(500);
-			res.send({ status: 'error' });
+			const { error, status } = handleError(err);
+			res.status(status);
+			res.send({ status: 'error', error: error });
 		});
 	});
 
