@@ -1,8 +1,7 @@
 import { Pool } from 'pg';
 import { logger } from './logger';
-import { migrateUp, createDB, sql, readMigrationsFromDir, SchemaConstraint } from './Orm/PostgresqlDriver';
+import { migrateUp, createDB, sql, readMigrationsFromDir, SchemaConstraint, DBQueryError } from './Orm/PostgresqlDriver';
 import { sleep } from './utils';
-import { DBQueryError } from './Orm/Base';
 
 export interface DBOptions {
 	config: {

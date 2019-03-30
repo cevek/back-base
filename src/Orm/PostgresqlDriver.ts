@@ -1,18 +1,5 @@
 import { randomBytes } from 'crypto';
 import DataLoader from 'dataloader';
-import {
-	AllOperators,
-	CollectionConstraint,
-	DBCollection,
-	DBEntityNotFound,
-	DBValue,
-	Other,
-	QueryResult,
-	Where,
-	WhereOr,
-	DBQueryError,
-	Keys,
-} from './Base';
 import { readdir, readFile } from 'fs-extra';
 
 export type BaseDB<Schema> = Collections<Schema> & {
@@ -32,6 +19,98 @@ type Collections<Schema> = {
 	[P in keyof Schema]: Schema[P] extends CollectionConstraint ? Collection<Schema[P]> : never
 };
 
+export type QueryResult<T, Keys extends keyof T, CF extends string> = ([Keys] extends [never] ? T : Pick<T, Keys>) &
+	{ [P in CF]: string };
+type DBValue = DBValueBase | DBValueBase[];
+type DBValueBase = string | number | boolean | Date | undefined;
+type Keys<T> = Extract<keyof T, string>;
+
+export type CollectionConstraint = { id: string; [key: string]: DBValue };
+
+type WhereOr<T extends { id: string }> = Where<T> | Where<T>[];
+
+type NumOperators = {
+	ne?: number;
+	gt?: number;
+	gte?: number;
+	lt?: number;
+	lte?: number;
+	between?: [number, number];
+	notBetween?: [number, number];
+	in?: number[];
+	notIn?: number[];
+};
+
+type DateOperators = {
+	ne?: Date;
+	gt?: Date;
+	gte?: Date;
+	lt?: Date;
+	lte?: Date;
+	between?: [Date, Date];
+	notBetween?: [Date, Date];
+	in?: Date[];
+	notIn?: Date[];
+};
+
+type BoolOperators = {
+	ne?: number;
+};
+type StrOperators = {
+	in?: string[];
+	ne?: string;
+	gt?: string;
+	gte?: string;
+	lt?: string;
+	lte?: string;
+	like?: string;
+	notLike?: string;
+	iLike?: string;
+	notILike?: string;
+	regexp?: string;
+	notRegexp?: string;
+	iRegexp?: string;
+	notIRegexp?: string;
+};
+type ArrOperators<T> = {
+	contains?: T;
+	ne?: T;
+	gt?: T;
+	gte?: T;
+	lt?: T;
+	lte?: T;
+	overlap?: T;
+	contained?: T;
+};
+type AllOperators = NumOperators & StrOperators & ArrOperators<number> & BoolOperators & DateOperators;
+
+type WhereItem<T> = T extends number
+	? NumOperators | number
+	: (T extends string
+			? StrOperators | T
+			: (T extends Date ? DateOperators : (T extends Array<infer V> ? ArrOperators<V[]> | V[] : never)));
+
+type Where<T> = { [P in keyof T]?: T[P] | WhereItem<T[P]> | DBQuery };
+
+type Other<T, Fields extends Keys<T>, CustomFields extends string> = {
+	select?: ReadonlyArray<Fields>;
+	selectCustom?: { [P in CustomFields]: DBQuery };
+	order?: { desc?: Keys<T>; asc?: Keys<T> };
+	limit?: number;
+	offset?: number;
+};
+
+export class DBEntityNotFound extends Error {
+	constructor(public entityName: string, public cond: string) {
+		super(`Entity is not found: ${entityName} ${cond}`);
+	}
+}
+export class DBQueryError extends Error {
+	constructor(public query: string, public values: DBValue[], public error: string) {
+		super(`SQL Error: ${error}, query: ${query}, values: ${JSON.stringify(values)}`);
+	}
+}
+
 export function sql(strs: TemplateStringsArray, ...inserts: QueryValue[]) {
 	return new DBQuery(strs, inserts);
 }
@@ -39,7 +118,7 @@ export function joinQueries(queries: DBQuery[], separator?: DBQuery): DBQuery {
 	return sql`${new DBQueries(queries, separator)}`;
 }
 
-class Collection<T extends CollectionConstraint> implements DBCollection<T> {
+class Collection<T extends CollectionConstraint> {
 	private loader: DataLoader<T['id'], T | undefined>;
 	name: Column;
 	fields: { [P in keyof T]: Column };
@@ -60,14 +139,16 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(id));
 		return row;
 	}
-	async findOne<K extends Keys<T> = never>(where: WhereOr<T>, other?: Other<T, K>) {
+	async findOne<K extends Keys<T> = never, CF extends string = never>(where: WhereOr<T>, other?: Other<T, K, CF>) {
 		const row = await this.findOneOrNull(where, other);
 		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(where));
 		return row;
 	}
-	async findAll<K extends Keys<T> = never>(where: WhereOr<T>, other: Other<T, K> = {}) {
-		return this.query<QueryResult<T, K>>(
-			sql`SELECT ${prepareFields(other.select)} FROM ${this.name}${prepareWhereOr(where)}${prepareOther(other)}`,
+	async findAll<K extends Keys<T> = never, CF extends string = ''>(where: WhereOr<T>, other: Other<T, K, CF> = {}) {
+		return this.query<QueryResult<T, K, CF>>(
+			sql`SELECT ${prepareFields(other.select, other.selectCustom)} FROM ${this.name}${prepareWhereOr(
+				where,
+			)}${prepareOther(other)}`,
 		);
 	}
 	async findByIdOrNull<K extends Keys<T> = never>(id: T['id'], other: { select?: K[] } = {}) {
@@ -77,11 +158,14 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 			return;
 		}
 		if (other.select === undefined || other.select.length === 0) {
-			return this.loader.load(id) as Promise<QueryResult<T, K> | undefined>;
+			return this.loader.load(id) as Promise<QueryResult<T, K, never> | undefined>;
 		}
 		return this.findOneOrNull({ id } as Where<T>, other);
 	}
-	async findOneOrNull<K extends Keys<T> = never>(where: WhereOr<T>, other: Other<T, K> = {}) {
+	async findOneOrNull<K extends Keys<T> = never, CF extends string = never>(
+		where: WhereOr<T>,
+		other: Other<T, K, CF> = {},
+	) {
 		other.limit = 1;
 		const rows = await this.findAll(where, other);
 		return rows.length > 0 ? rows[0] : undefined;
@@ -137,8 +221,18 @@ class Collection<T extends CollectionConstraint> implements DBCollection<T> {
 	}
 }
 
-function prepareFields(fields: ReadonlyArray<string | DBQuery> | undefined) {
-	return fields ? joinQueries(fields.map(f => sql`${typeof f === 'string' ? field(f) : f}`), sql`, `) : sql`*`;
+function prepareFields(
+	fields: ReadonlyArray<string | DBQuery> | undefined,
+	customFields: { [key: string]: DBQuery } | undefined,
+) {
+	const arr = fields ? fields.map(f => sql`${typeof f === 'string' ? field(f) : f}`) : [];
+	if (arr.length === 0) arr.push(sql`*`);
+	if (customFields) {
+		for (const f in customFields) {
+			arr.push(sql`(${customFields[f]}) AS ${field(f)}`);
+		}
+	}
+	return joinQueries(arr, sql`, `);
 }
 
 function prepareWhereOr(where: WhereOr<CollectionConstraint>) {
@@ -236,7 +330,7 @@ function handleOperator(field: DBRaw, op: keyof Required<AllOperators>, operator
 	}
 }
 
-function prepareOther<T>(other: Other<T, Keys<T>> | undefined) {
+function prepareOther<T>(other: Other<T, Keys<T>, never> | undefined) {
 	if (!other) return sql``;
 	const queries: DBQuery[] = [];
 	if (other.order) {
@@ -248,27 +342,28 @@ function prepareOther<T>(other: Other<T, Keys<T>> | undefined) {
 	return joinQueries(queries);
 }
 
-function dbQueryToString(dbQuery: DBQuery, values: QueryValue[]) {
+function dbQueryToString(dbQuery: DBQuery, allValues: QueryValue[]) {
 	let queryStr = '';
-	for (let i = 0; i < dbQuery.parts.length; i++) {
-		queryStr = queryStr + dbQuery.parts[i];
-		if (dbQuery.values.length > i) {
-			const value = dbQuery.values[i];
+	const { parts, values } = (dbQuery as unknown) as PublicDBQuery;
+	for (let i = 0; i < parts.length; i++) {
+		queryStr = queryStr + parts[i];
+		if (values.length > i) {
+			const value = values[i];
 			if (value instanceof DBRaw) {
 				queryStr = queryStr + value.raw;
 			} else if (value instanceof DBQuery) {
-				queryStr = queryStr + dbQueryToString(value, values);
+				queryStr = queryStr + dbQueryToString(value, allValues);
 			} else if (value instanceof DBQueries) {
 				for (let j = 0; j < value.queries.length; j++) {
 					const subQuery = value.queries[j];
 					if (j > 0 && value.separator !== undefined) {
-						queryStr = queryStr + dbQueryToString(value.separator, values);
+						queryStr = queryStr + dbQueryToString(value.separator, allValues);
 					}
-					queryStr = queryStr + dbQueryToString(subQuery, values);
+					queryStr = queryStr + dbQueryToString(subQuery, allValues);
 				}
 			} else {
-				values.push(value);
-				queryStr = queryStr + '$' + String(values.length);
+				allValues.push(value);
+				queryStr = queryStr + '$' + String(allValues.length);
 			}
 		}
 	}
@@ -356,7 +451,12 @@ class DBRaw {
 	constructor(public readonly raw: string) {}
 }
 class DBQuery {
-	constructor(public readonly parts: ReadonlyArray<string>, public readonly values: ReadonlyArray<QueryValue>) {}
+	constructor(private readonly parts: ReadonlyArray<string>, private readonly values: ReadonlyArray<QueryValue>) {}
+}
+
+interface PublicDBQuery {
+	parts: ReadonlyArray<string>;
+	values: ReadonlyArray<QueryValue>;
 }
 class DBQueries {
 	constructor(public readonly queries: ReadonlyArray<DBQuery>, public readonly separator: DBQuery | undefined) {}
