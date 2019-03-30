@@ -18,9 +18,7 @@ import { dbInit, DBOptions } from './dbInit';
 import { BaseClientError } from './errors';
 import { graphQLBigintTypeFactory } from './graphQLUtils';
 import { logger } from './logger';
-import { DBEntityNotFound } from './Orm';
-import { DBQueryError } from './Orm/Base';
-import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
+import { BaseDB, SchemaConstraint, DBQueryError, DBEntityNotFound } from './Orm';
 import * as bodyparser from 'body-parser';
 import serveStatic from 'serve-static';
 
@@ -33,6 +31,7 @@ export * from './request';
 export * from './testUtils';
 export * from './utils';
 export * from './dateUtils';
+export * from './Validator';
 export const bodyParser = bodyparser;
 
 export { logger, JsonError } from './logger';
@@ -105,6 +104,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	function handleError(error: Error) {
 		debugger;
 		if (error instanceof BaseClientError) {
+			logger.warn(error);
 			return { error: error.id, status: 400 };
 		}
 		if (options.db && error instanceof DBEntityNotFound) {
