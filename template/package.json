@@ -2,8 +2,8 @@
     "name": "project",
     "private": true,
     "scripts": {
-        "start": "node src",
-		"debug": "node --inspect-brk src",
+        "start": "node --icu-data-dir=node_modules/full-icu src",
+		"debug": "node --icu-data-dir=node_modules/full-icu --inspect-brk src",
         "prod": "git pull && npm install && NODE_ENV=production pm2 start src",
         "logs": "npx pm2 logs --raw | npx bunyan",
         "lint": "tsc --noEmit && eslint src/**/*.ts",

@@ -1,6 +1,6 @@
 {
 	"name": "backend-base",
-	"version": "1.0.13",
+	"version": "1.0.15",
 	"description": "",
 	"main": "dist/index",
 	"types": "dist/index",
@@ -31,7 +31,7 @@
 		"*.js"
 	],
 	"dependencies": {
-		"@types/body-parser": "^1.17.0",
+		"@types/body-parser": ">=1.17.0",
 		"@types/bunyan": ">=1.8.6",
 		"@types/cors": ">2.8.3",
 		"@types/dotenv": ">=6.1.0",
@@ -44,10 +44,10 @@
 		"@types/parcel-bundler": ">=1.10.2",
 		"@types/pg": ">7.4.0",
 		"@types/request": ">2.48.0",
-		"@types/serve-static": "^1.13.2",
+		"@types/serve-static": ">=1.13.2",
 		"@typescript-eslint/eslint-plugin": ">1.4.0",
 		"@typescript-eslint/eslint-plugin-tslint": ">1.4.0",
-		"body-parser": "^1.18.3",
+		"body-parser": ">=1.18.3",
 		"bunyan": ">1.8.0",
 		"cors": ">2.8.0",
 		"dataloader": ">=1.4.0",
@@ -59,15 +59,16 @@
 		"express-session": ">1.15.0",
 		"fs-extra": ">7.0.0",
 		"graphql": ">14.1.0",
-		"mkdirp": "^0.5.1",
+		"mkdirp": ">=0.5.1",
 		"nyc": ">=13.3.0",
 		"pg": ">=7.9.0",
 		"pm2": ">=3.4.0",
 		"request": ">2.80.0",
-		"serve-static": "^1.13.2",
+		"serve-static": ">=1.13.2",
 		"ts-node": ">=8.0.3",
 		"ts2graphql": ">=1.0.8",
 		"tslint": ">=5.14.0",
+		"full-icu": ">=1.2.1",
 		"typescript": ">=3.4.0-rc"
 	},
 	"devDependencies": {
