@@ -6,12 +6,12 @@ export type BaseDB<Schema> = Collections<Schema> & {
 	transaction: TransactionFun<Schema>;
 	query: QueryFun;
 };
-export type TransactionDB<Schema> = Collections<Schema> & { query: QueryFun };
+// export type TransactionDB<Schema> = Collections<Schema> & { query: QueryFun };
 export type SchemaConstraint = { [key: string]: CollectionConstraint };
 export type Column = DBRaw;
 
 type TransactionFun<Schema> = (
-	trx: (db: TransactionDB<Schema>) => Promise<void>,
+	trx: (db: BaseDB<Schema>) => Promise<void>,
 	rollback?: () => Promise<void>,
 ) => Promise<void>;
 
@@ -170,10 +170,13 @@ class Collection<T extends CollectionConstraint> {
 		const rows = await this.findAll(where, other);
 		return rows.length > 0 ? rows[0] : undefined;
 	}
-	async update(id: T['id'], data: Partial<T>) {
+	async update(id: T['id'], data: { [P in keyof T]?: T[P] | DBQuery | (T[P] extends number ? NumberUpdate : never) }) {
 		const values: DBQuery[] = [];
 		for (const key in data) {
-			values.push(sql`${field(key)} = ${data[key]}`);
+			let val = data[key];
+			if (isIncrement(val)) val = sql`${field(key)} + ${val.increment}`;
+			else if (isDecrement(val)) val = sql`${field(key)} + ${val.decrement}`;
+			else values.push(sql`${field(key)} = ${val as string}`);
 		}
 		const valueQuery = joinQueries(values, sql`, `);
 		await this.query(sql`UPDATE ${this.name} SET ${valueQuery}${prepareWhereOr({ id: id })}`);
@@ -181,11 +184,16 @@ class Collection<T extends CollectionConstraint> {
 	async remove(id: T['id']) {
 		await this.query(sql`DELETE FROM ${this.name}${prepareWhereOr({ id: id })}`);
 	}
-	async create(data: T, params: { noErrorIfConflict?: Keys<T> | DBQuery | true } = {}) {
+	async create(
+		data: { [P in keyof T]: T[P] | DBQuery | (P extends 'id' ? ('auto' | T[P]) : T[P]) },
+		params: { noErrorIfConflict?: Keys<T> | DBQuery | true } = {},
+	) {
 		const keys: Keys<T>[] = [];
 		const values: QueryValue[] = [];
 		for (const key in data) {
 			keys.push(key);
+			let value = data[key];
+			if (key === 'id' && value === 'auto') value = this.genId() as never;
 			values.push(data[key]);
 		}
 		const keyQuery = joinQueries(keys.map(key => sql`${field(key)}`), sql`, `);
@@ -219,6 +227,17 @@ class Collection<T extends CollectionConstraint> {
 			(BigInt(b[7]) << 0n);
 		return n.toString() as T['id'];
 	}
+}
+
+type NumberUpdate = { increment: number } | { decrement: number };
+
+function isIncrement(val: unknown): val is { increment: number } {
+	// eslint-disable-next-line
+	return typeof val === 'object' && typeof (val as { increment: number }).increment === 'number';
+}
+function isDecrement(val: unknown): val is { decrement: number } {
+	// eslint-disable-next-line
+	return typeof val === 'object' && typeof (val as { decrement: number }).decrement === 'number';
 }
 
 function prepareFields(
@@ -468,7 +487,7 @@ function field(field: string) {
 	return new DBRaw(`"${field}"`);
 }
 
-async function createMigrationTable(db: TransactionDB<unknown>) {
+async function createMigrationTable(db: BaseDB<unknown>) {
 	await db.query(sql`
 	 CREATE TABLE IF NOT EXISTS migrations (
 		id SERIAL PRIMARY KEY,
