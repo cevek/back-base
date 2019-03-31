@@ -21,6 +21,9 @@ import { logger } from './logger';
 import { BaseDB, SchemaConstraint, DBQueryError, DBEntityNotFound } from './Orm';
 import * as bodyparser from 'body-parser';
 import serveStatic from 'serve-static';
+import { readFileSync } from 'fs';
+import https from 'https';
+import http from 'http';
 
 export * from './di';
 export * from './errors';
@@ -39,6 +42,11 @@ export { logger, JsonError } from './logger';
 export const PRODUCTION = ENV === 'production';
 
 export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
+	https?: {
+		privateKeyFile: string;
+		certificateFile: string;
+		port?: number;
+	};
 	session?: SessionOptions;
 	db?: DBOptions;
 	graphql: {
@@ -56,10 +64,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		unknown: unknown;
 	};
 	port: number;
-}): Promise<{
-	db: BaseDB<DBSchema>;
-	express: Express.Express;
-}> {
+}) {
 	logger.info('ENV=' + ENV);
 	const projectDir = dirname(require.main!.filename);
 
@@ -157,11 +162,23 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		});
 	});
 
-	express.listen(options.port, () =>
-		logger.info('server is running on http://localhost:4000, graphql: http://localhost:4000/api/graphql'),
+	const server = options.https
+		? https.createServer(
+				{
+					key: readFileSync(options.https.privateKeyFile, 'utf8'),
+					cert: readFileSync(options.https.certificateFile, 'utf8'),
+				},
+				express,
+		  )
+		: http.createServer(express);
+
+	const port = options.https ? options.https.port || 4443 : options.port;
+	server.listen(port, () =>
+		logger.info(`server is running on http://localhost:${port}, graphql: http://localhost:${port}/api/graphql`),
 	);
 
 	return {
+		server,
 		express,
 		db: db!,
 	};
