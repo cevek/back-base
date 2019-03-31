@@ -20,7 +20,7 @@ type Collections<Schema> = {
 };
 
 export type QueryResult<T, Keys extends keyof T, CF extends string> = ([Keys] extends [never] ? T : Pick<T, Keys>) &
-	{ [P in CF]: string };
+	{ [P in CF]: string | undefined };
 type DBValue = DBValueBase | DBValueBase[];
 type DBValueBase = string | number | boolean | Date | undefined;
 type Keys<T> = Extract<keyof T, string>;
@@ -29,50 +29,48 @@ export type CollectionConstraint = { id: string; [key: string]: DBValue };
 
 type WhereOr<T extends { id: string }> = Where<T> | Where<T>[];
 
-type NumOperators = {
-	ne?: number;
-	gt?: number;
-	gte?: number;
-	lt?: number;
-	lte?: number;
-	between?: [number, number];
-	notBetween?: [number, number];
+type NumOperators<T = number | DBQuery> = {
+	ne?: T;
+	gt?: T;
+	gte?: T;
+	lt?: T;
+	lte?: T;
+	between?: [T, T];
+	notBetween?: [T, T];
 	in?: number[];
 	notIn?: number[];
 };
 
-type DateOperators = {
-	ne?: Date;
-	gt?: Date;
-	gte?: Date;
-	lt?: Date;
-	lte?: Date;
-	between?: [Date, Date];
-	notBetween?: [Date, Date];
-	in?: Date[];
-	notIn?: Date[];
+type DateOperators<T = Date | DBQuery> = {
+	ne?: T;
+	gt?: T;
+	gte?: T;
+	lt?: T;
+	lte?: T;
+	between?: [T, T];
+	notBetween?: [T, T];
 };
 
 type BoolOperators = {
-	ne?: number;
+	ne?: number | DBQuery;
 };
-type StrOperators = {
+type StrOperators<T = string | DBQuery> = {
 	in?: string[];
-	ne?: string;
-	gt?: string;
-	gte?: string;
-	lt?: string;
-	lte?: string;
-	like?: string;
-	notLike?: string;
-	iLike?: string;
-	notILike?: string;
-	regexp?: string;
-	notRegexp?: string;
-	iRegexp?: string;
-	notIRegexp?: string;
+	ne?: T;
+	gt?: T;
+	gte?: T;
+	lt?: T;
+	lte?: T;
+	like?: T;
+	notLike?: T;
+	iLike?: T;
+	notILike?: T;
+	regexp?: T;
+	notRegexp?: T;
+	iRegexp?: T;
+	notIRegexp?: T;
 };
-type ArrOperators<T> = {
+type ArrOperators<T = number | DBQuery> = {
 	contains?: T;
 	ne?: T;
 	gt?: T;
@@ -82,7 +80,7 @@ type ArrOperators<T> = {
 	overlap?: T;
 	contained?: T;
 };
-type AllOperators = NumOperators & StrOperators & ArrOperators<number> & BoolOperators & DateOperators;
+type AllOperators = NumOperators & StrOperators & ArrOperators & BoolOperators & DateOperators;
 
 type WhereItem<T> = T extends number
 	? NumOperators | number
@@ -90,7 +88,7 @@ type WhereItem<T> = T extends number
 			? StrOperators | T
 			: (T extends Date ? DateOperators : (T extends Array<infer V> ? ArrOperators<V[]> | V[] : never)));
 
-type Where<T> = { [P in keyof T]?: T[P] | WhereItem<T[P]> | DBQuery };
+type Where<T> = { [P in keyof T]?: T[P] | WhereItem<T[P]> | DBQuery } | DBQuery;
 
 type Other<T, Fields extends Keys<T>, CustomFields extends string> = {
 	select?: ReadonlyArray<Fields>;
@@ -175,7 +173,7 @@ class Collection<T extends CollectionConstraint> {
 		for (const key in data) {
 			let val = data[key] as DBQuery;
 			if (isIncrement(val)) val = sql`${field(key)} + ${val.increment}`;
-			else if (isDecrement(val)) val = sql`${field(key)} + ${val.decrement}`;
+			else if (isDecrement(val)) val = sql`${field(key)} - ${val.decrement}`;
 			values.push(sql`${field(key)} = ${val}`);
 		}
 		const valueQuery = joinQueries(values, sql`, `);
@@ -266,6 +264,10 @@ function prepareWhereOr(where: WhereOr<CollectionConstraint>) {
 function prepareWhere(where: Where<CollectionConstraint>) {
 	const queries: DBQuery[] = [];
 	for (const f in where) {
+		if (where instanceof DBQuery) {
+			queries.push(where);
+			continue;
+		}
 		const fieldRaw = field(f);
 		const operators = where[f] as AllOperators | string;
 		if (typeof operators === 'object' && !Array.isArray(operators)) {
