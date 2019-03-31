@@ -79,7 +79,7 @@ class FileStream extends StdoutStream {
 	constructor(private fileName: string) {
 		super();
 		mkdirp.sync(dirname(this.fileName));
-		this.fileStream = createWriteStream(this.fileName);
+		this.fileStream = createWriteStream(this.fileName, {flags: 'a'});
 	}
 	out(level: number, time: Date, msg: string, data: object, err?: Error) {
 		const json = Object.keys(data).length === 0 ? '' : inspect(data, { compact: false, depth: 20, colors: true });
