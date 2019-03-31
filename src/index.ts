@@ -151,7 +151,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 
 	setTimeout(() => {
 		/* istanbul ignore next */
-		express.use((err: any, req: Express.Request, res: Express.Response, next: Express.NextFunction) => {
+		express.use((err: any, _: Express.Request, res: Express.Response, next: Express.NextFunction) => {
 			logger.error(err);
 			if (res.headersSent) {
 				return next(err);
@@ -194,7 +194,7 @@ export function asyncMiddleware(
 	};
 }
 
-process.on('unhandledRejection', (reason, p) => {
+process.on('unhandledRejection', (reason) => {
 	logger.warn({ err: reason }, 'Unhandled Promise rejection');
 });
 process.on('uncaughtException', err => {

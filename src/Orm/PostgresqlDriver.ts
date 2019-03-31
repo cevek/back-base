@@ -173,10 +173,10 @@ class Collection<T extends CollectionConstraint> {
 	async update(id: T['id'], data: { [P in keyof T]?: T[P] | DBQuery | (T[P] extends number ? NumberUpdate : never) }) {
 		const values: DBQuery[] = [];
 		for (const key in data) {
-			let val = data[key];
+			let val = data[key] as DBQuery;
 			if (isIncrement(val)) val = sql`${field(key)} + ${val.increment}`;
 			else if (isDecrement(val)) val = sql`${field(key)} + ${val.decrement}`;
-			else values.push(sql`${field(key)} = ${val as string}`);
+			values.push(sql`${field(key)} = ${val}`);
 		}
 		const valueQuery = joinQueries(values, sql`, `);
 		await this.query(sql`UPDATE ${this.name} SET ${valueQuery}${prepareWhereOr({ id: id })}`);
@@ -194,7 +194,7 @@ class Collection<T extends CollectionConstraint> {
 			keys.push(key);
 			let value = data[key];
 			if (key === 'id' && value === 'auto') value = this.genId() as never;
-			values.push(data[key]);
+			values.push(value);
 		}
 		const keyQuery = joinQueries(keys.map(key => sql`${field(key)}`), sql`, `);
 		const valueQuery = joinQueries(values.map(val => sql`${val}`), sql`, `);
@@ -205,7 +205,6 @@ class Collection<T extends CollectionConstraint> {
 			}
 			// eslint-disable-next-line
 			else if (typeof params.noErrorIfConflict === 'string') {
-				var x: string = params.noErrorIfConflict;
 				onConflictFields = sql`(${field(params.noErrorIfConflict)})`;
 			} else {
 				onConflictFields = sql`(${params.noErrorIfConflict})`;
@@ -391,7 +390,7 @@ function dbQueryToString(dbQuery: DBQuery, allValues: QueryValue[]) {
 
 /* istanbul ignore next */
 function never(never?: never): never {
-	throw new Error('Never possible');
+	throw new Error(`Never possible: ${never}`);
 }
 
 function maybe<T>(val: T): T | undefined {
@@ -470,7 +469,12 @@ class DBRaw {
 	constructor(public readonly raw: string) {}
 }
 class DBQuery {
-	constructor(private readonly parts: ReadonlyArray<string>, private readonly values: ReadonlyArray<QueryValue>) {}
+	constructor(
+		//@ts-ignore
+		private readonly parts: ReadonlyArray<string>,
+		//@ts-ignore
+		private readonly values: ReadonlyArray<QueryValue>,
+	) {}
 }
 
 interface PublicDBQuery {

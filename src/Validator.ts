@@ -110,17 +110,17 @@ export function assertArray(val: unknown[], constraints?: { minSize?: number; ma
 	if (constraints !== undefined) between(val.length, constraints.minSize, constraints.maxSize, 'Array.length');
 	return val;
 }
-export function assertArrayNullable(val: unknown[] | undefined, constraints?: { min?: Date; max?: Date }) {
-	if (val !== undefined) assertArray(val);
+export function assertArrayNullable(val: unknown[] | undefined, constraints?: { minSize?: number; maxSize?: number }) {
+	if (val !== undefined) assertArray(val, constraints);
 	return val;
 }
 export function assertNoEmptyArray(val: unknown[], constraints?: { minSize?: number; maxSize?: number }) {
-	assertArray(val);
+	assertArray(val, constraints);
 	if (val.length === 0) throw new ValidationError('Array should have elements', val);
 	return val;
 }
-export function assertNoEmptyArrayNullable(val: unknown[] | undefined, constraints?: { min?: Date; max?: Date }) {
-	if (val !== undefined) assertNoEmptyArray(val);
+export function assertNoEmptyArrayNullable(val: unknown[] | undefined, constraints?: { minSize?: number; maxSize?: number }) {
+	if (val !== undefined) assertNoEmptyArray(val, constraints);
 	return val;
 }
 export function assertBool(val: boolean) {

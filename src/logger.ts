@@ -1,10 +1,10 @@
 import Logger, { LogLevel } from 'bunyan';
 import { EventEmitter } from 'events';
-import { cleanStackTrace } from './cleanStackTrace';
-import { getEnvNullable, getEnv } from './utils';
-import { inspect } from 'util';
-import { createWriteStream, WriteStream, existsSync } from 'fs';
+import { createWriteStream, WriteStream } from 'fs';
 import { dirname } from 'path';
+import { inspect } from 'util';
+import { cleanStackTrace } from './cleanStackTrace';
+import { getEnv, getEnvNullable } from './utils';
 const mkdirp = require('mkdirp');
 
 export class JsonError extends Error {
@@ -79,7 +79,7 @@ class FileStream extends StdoutStream {
 	constructor(private fileName: string) {
 		super();
 		mkdirp.sync(dirname(this.fileName));
-		this.fileStream = createWriteStream(this.fileName, {flags: 'a'});
+		this.fileStream = createWriteStream(this.fileName, { flags: 'a' });
 	}
 	out(level: number, time: Date, msg: string, data: object, err?: Error) {
 		const json = Object.keys(data).length === 0 ? '' : inspect(data, { compact: false, depth: 20, colors: true });
@@ -97,12 +97,12 @@ function formatTime(t: Date) {
 function formatDate(t: Date) {
 	return `${t.getFullYear()}-${('0' + (t.getMonth() + 1)).substr(-2)}-${('0' + t.getDate()).substr(-2)}`;
 }
-function formatDiff(time: Date, time2: Date) {
-	const ms = time2.getTime() - time.getTime();
-	if (ms > 60_000) return `+${(ms / 60_000).toPrecision(1)}min`;
-	if (ms > 1000) return `+${(ms / 1000).toPrecision(1)}s`;
-	return `+${Math.round(ms / 10) * 10}ms`;
-}
+// function formatDiff(time: Date, time2: Date) {
+// 	const ms = time2.getTime() - time.getTime();
+// 	if (ms > 60_000) return `+${(ms / 60_000).toPrecision(1)}min`;
+// 	if (ms > 1000) return `+${(ms / 1000).toPrecision(1)}s`;
+// 	return `+${Math.round(ms / 10) * 10}ms`;
+// }
 
 const errorLogFile = getEnv('ERROR_LOG_FILE');
 const traceLogFile = getEnv('TRACE_LOG_FILE');

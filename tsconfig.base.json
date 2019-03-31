@@ -7,6 +7,8 @@
 		"strict": true,
 		"resolveJsonModule": true,
 		"experimentalDecorators": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
 		"esModuleInterop": true
 	},
 	"exclude": ["node_modules", "dist"]

@@ -63,9 +63,11 @@ async function main() {
 
 	function abc() {
 		for (let i = 0; i < 1e5; i++) {
-			var p = collection.findAll([{ id: '12' }, { name: 'hello' }, { login: 'foo', todos: { contains: ['12'] } }], {
-				select: ['id'],
-			});
+			collection
+				.findAll([{ id: '12' }, { name: 'hello' }, { login: 'foo', todos: { contains: ['12'] } }], {
+					select: ['id'],
+				})
+				.then(() => {}, () => {});
 		}
 	}
 	// setInterval(() => 1, 1000);

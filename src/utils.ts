@@ -25,7 +25,7 @@ export function removeItemOrNever<Arr extends ReadonlyArray<T>, T>(arr: Arr, ite
 
 /* istanbul ignore next */
 export function never(never?: never): never {
-	throw new Error('Never possible');
+	throw new Error(`Never possible: ${never}`);
 }
 
 export function sleep(ms: number) {

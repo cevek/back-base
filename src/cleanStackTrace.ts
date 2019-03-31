@@ -1,6 +1,4 @@
 'use strict';
-import os from 'os';
-
 const extractPathRegex = /\s+at.*?\((.*?)\)/;
 // const pathRegex2 = /^(((node|(internal\/[\w/]*|.*node_modules\/(babel-polyfill|ts-node)\/.*)?\w+)\.js:\d+:\d+)|native)/;
 const pathRegex = /^internal|(.*?\/node_modules\/(ts-node)\/)/;
