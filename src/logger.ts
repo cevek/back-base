@@ -68,7 +68,7 @@ class StdoutStream extends EventEmitter {
 				levels[Logger.nameFromLevel[level] as keyof typeof levels],
 			)}`,
 			msg,
-			Object.keys(data).length === 0 ? '' : inspect(data, { compact: false, depth: 20, colors: true }),
+			Object.keys(data).length === 0 ? '' : inspect(data, { compact: false, depth: Infinity }),
 			err ? `\n${cleanStackTrace(err.stack)}` : '',
 		);
 	}
@@ -82,7 +82,7 @@ class FileStream extends StdoutStream {
 		this.fileStream = createWriteStream(this.fileName, { flags: 'a' });
 	}
 	out(level: number, time: Date, msg: string, data: object, err?: Error) {
-		const json = Object.keys(data).length === 0 ? '' : inspect(data, { compact: false, depth: 20, colors: true });
+		const json = Object.keys(data).length === 0 ? '' : inspect(data, { compact: false, depth: Infinity });
 		const errStack = err ? `\n${cleanStackTrace(err.stack)}` : '';
 		const d = new Date(+time);
 		this.fileStream.write(

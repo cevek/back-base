@@ -40,12 +40,7 @@ export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: stri
 		const migrations = await readMigrationsFromDir(projectDir + '/../migrations/');
 		await migrateUp(db, migrations, logger);
 	} catch (e) {
-		if (e instanceof DBQueryError) {
-			logger.error('Migration error: ' + e.error);
-		} else {
-			logger.error('Migration error', e);
-		}
-		throw e;
+        throw new Error('Migration error: ' + (e instanceof DBQueryError ? e.error : e.message));
 	}
 	return db;
 }

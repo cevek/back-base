@@ -152,11 +152,10 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	setTimeout(() => {
 		/* istanbul ignore next */
 		express.use((err: any, _: Express.Request, res: Express.Response, next: Express.NextFunction) => {
-			logger.error(err);
+			const { error, status } = handleError(err);
 			if (res.headersSent) {
 				return next(err);
 			}
-			const { error, status } = handleError(err);
 			res.status(status);
 			res.send({ status: 'error', error: error });
 		});

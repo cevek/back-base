@@ -105,21 +105,24 @@ export function assertDateNullable(val: Date | undefined, constraints?: { min?: 
 	if (val !== undefined) assertDate(val, constraints);
 	return val;
 }
-export function assertArray(val: unknown[], constraints?: { minSize?: number; maxSize?: number }) {
+export function assertArray<T>(val: T[], constraints?: { minSize?: number; maxSize?: number }) {
 	if (!Array.isArray(val)) throw new ValidationError('Value is not an array', val);
 	if (constraints !== undefined) between(val.length, constraints.minSize, constraints.maxSize, 'Array.length');
 	return val;
 }
-export function assertArrayNullable(val: unknown[] | undefined, constraints?: { minSize?: number; maxSize?: number }) {
+export function assertArrayNullable<T>(val: T[] | undefined, constraints?: { minSize?: number; maxSize?: number }) {
 	if (val !== undefined) assertArray(val, constraints);
 	return val;
 }
-export function assertNoEmptyArray(val: unknown[], constraints?: { minSize?: number; maxSize?: number }) {
+export function assertNoEmptyArray<T>(val: T[], constraints?: { minSize?: number; maxSize?: number }) {
 	assertArray(val, constraints);
 	if (val.length === 0) throw new ValidationError('Array should have elements', val);
 	return val;
 }
-export function assertNoEmptyArrayNullable(val: unknown[] | undefined, constraints?: { minSize?: number; maxSize?: number }) {
+export function assertNoEmptyArrayNullable<T>(
+	val: T[] | undefined,
+	constraints?: { minSize?: number; maxSize?: number },
+) {
 	if (val !== undefined) assertNoEmptyArray(val, constraints);
 	return val;
 }
@@ -140,11 +143,36 @@ export function emailNullable(val: string | undefined) {
 	if (val !== undefined) assertEmail(val);
 	return val;
 }
-export function assertObject(val: object) {
+export function assertObject<T extends object>(val: T) {
 	if (typeof val !== 'object' || val === null) throw new ValidationError('Value is not an object', val);
 	return val;
 }
-export function assertObjectNullable(val: object | undefined) {
+export function assertObjectNullable<T extends object>(val: T | undefined) {
 	if (val !== undefined) assertObject(val);
+	return val;
+}
+export function assertNoEmptyObject<T extends object>(val: T) {
+	assertObject(val);
+	if (Object.keys(val).length === 0) throw new ValidationError('Object should have elements', val);
+	return val;
+}
+export function assertNoEmptyObjectNullable<T extends object>(val: T | undefined) {
+	if (val !== undefined) assertNoEmptyObject(val);
+	return val;
+}
+export function assertUnion<T>(val: T & {}, union: T[]) {
+	if (!union.includes(val)) throw new ValidationError(`Union doesn't have specified element`, val);
+	return val;
+}
+export function assertUnionNullable<T>(val: T | undefined, union: T[]) {
+	if (val !== undefined) assertUnion(val, union);
+	return val;
+}
+export function assertEnum(val: number | string, Enum: { [key: number]: string }) {
+	if (Enum[val as number] === undefined) throw new ValidationError(`Enum doesn't have specified element`, val);
+	return val;
+}
+export function assertEnumNullable(val: number | string | undefined, Enum: { [key: number]: string }) {
+	if (val !== undefined) assertEnum(val, Enum);
 	return val;
 }
