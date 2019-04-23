@@ -15,29 +15,25 @@ import { GraphQLError } from 'graphql';
 import { dirname } from 'path';
 import { createSchema } from 'ts2graphql';
 import { dbInit, DBOptions } from './dbInit';
-import { BaseClientError } from './errors';
 import { graphQLBigintTypeFactory } from './graphQLUtils';
-import { logger } from './logger';
-import { BaseDB, SchemaConstraint, DBQueryError, DBEntityNotFound } from './Orm';
+import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
 import * as bodyparser from 'body-parser';
 import serveStatic from 'serve-static';
 import { readFileSync } from 'fs';
 import https from 'https';
 import http from 'http';
+import { ClientException, logger } from './logger';
 
 export * from './di';
-export * from './errors';
 export * from './graphQLUtils';
-export * from './Orm';
 export * from './Orm/PostgresqlDriver';
 export * from './request';
 export * from './testUtils';
 export * from './utils';
 export * from './dateUtils';
-export * from './Validator';
+export * from './assert';
+export * from './logger';
 export const bodyParser = bodyparser;
-
-export { logger, JsonError } from './logger';
 
 export const PRODUCTION = ENV === 'production';
 
@@ -65,7 +61,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	};
 	port: number;
 }) {
-	logger.info('ENV=' + ENV);
+	logger.info('ENV', { ENV });
 	const projectDir = dirname(require.main!.filename);
 
 	let db: BaseDB<DBSchema> | undefined;
@@ -108,20 +104,10 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 
 	function handleError(error: Error) {
 		debugger;
-		if (error instanceof BaseClientError) {
-			logger.warn(error);
-			return { error: error.id, status: 400 };
-		}
-		if (options.db && error instanceof DBEntityNotFound) {
-			logger.warn(error.message);
-			return { error: options.db.errorEntityNotFound, status: 400 };
+		if (error instanceof ClientException) {
+			return { error: error.name, status: 400 };
 		}
 		/* istanbul ignore next */
-		if (error instanceof DBQueryError) {
-			logger.error('DBQuery error: ' + error.error + '\n' + error.query + '\n', error.values);
-		} else {
-			logger.error(error);
-		}
 		return { error: options.errors.unknown, status: 500 };
 	}
 
@@ -172,9 +158,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		: http.createServer(express);
 
 	const port = options.https ? options.https.port || 4443 : options.port;
-	server.listen(port, () =>
-		logger.info(`server is running on http://localhost:${port}, graphql: http://localhost:${port}/api/graphql`),
-	);
+	server.listen(port, () => logger.info(`server starts on port`, { port }));
 
 	return {
 		server,
@@ -193,12 +177,12 @@ export function asyncMiddleware(
 	};
 }
 
-process.on('unhandledRejection', (reason) => {
-	logger.warn({ err: reason }, 'Unhandled Promise rejection');
+process.on('unhandledRejection', reason => {
+	logger.warn('Unhandled Promise rejection', { reason });
 });
 process.on('uncaughtException', err => {
-	logger.error(err);
+	logger.error('UncaughtException', err);
 });
 process.on('warning', warning => {
-	logger.warn(warning);
+	logger.warn('Warning', { warning });
 });

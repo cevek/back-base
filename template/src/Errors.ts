@@ -1,4 +1,3 @@
-import {BaseClientError} from 'backend-base';
 export enum Errors {
     SomethingWentWrong = 'SomethingWentWrong',
     ValidationFailed = 'ValidationFailed',
@@ -8,4 +7,3 @@ export enum Errors {
     EntityNotFound = 'EntityNotFound',
 }
 
-export class ClientError extends BaseClientError<Errors> {}

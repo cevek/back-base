@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import DataLoader from 'dataloader';
 import { readdir, readFile } from 'fs-extra';
+import { Exception, BaseException, ClientException, logger } from 'src/logger';
 
 export type BaseDB<Schema> = Collections<Schema> & {
 	transaction: TransactionFun<Schema>;
@@ -98,16 +99,16 @@ type Other<T, Fields extends Keys<T>, CustomFields extends string> = {
 	offset?: number;
 };
 
-export class DBEntityNotFound extends Error {
-	constructor(public entityName: string, public cond: string) {
-		super(`Entity is not found: ${entityName} ${cond}`);
-	}
-}
-export class DBQueryError extends Error {
-	constructor(public query: string, public values: DBValue[], public error: string) {
-		super(`SQL Error: ${error}, query: ${query}, values: ${JSON.stringify(values)}`);
-	}
-}
+// export class DBEntityNotFound extends Error {
+// 	constructor(public entityName: string, public cond: string) {
+// 		super(`Entity is not found: ${entityName} ${cond}`);
+// 	}
+// }
+// export class DBQueryError extends Error {
+// 	constructor(public query: string, public values: DBValue[], public error: string) {
+// 		super(`SQL Error: ${error}, query: ${query}, values: ${JSON.stringify(values)}`);
+// 	}
+// }
 
 export function sql(strs: TemplateStringsArray, ...inserts: QueryValue[]) {
 	return new DBQuery(strs, inserts);
@@ -133,12 +134,25 @@ class Collection<T extends CollectionConstraint> {
 	}
 	async findById<K extends Keys<T> = never>(id: T['id'], other?: { select?: K[] }) {
 		const row = await this.findByIdOrNull(id, other);
-		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(id));
+		if (row === undefined) throw new Exception('EntityNotFound', { collection: this.collectionName, id });
+		return row;
+	}
+	async findByIdClient<K extends Keys<T> = never>(id: T['id'], other?: { select?: K[] }) {
+		const row = await this.findByIdOrNull(id, other);
+		if (row === undefined) throw new ClientException('EntityNotFound', { collection: this.collectionName, id });
 		return row;
 	}
 	async findOne<K extends Keys<T> = never, CF extends string = never>(where: WhereOr<T>, other?: Other<T, K, CF>) {
 		const row = await this.findOneOrNull(where, other);
-		if (row === undefined) throw new DBEntityNotFound(this.collectionName, JSON.stringify(where));
+		if (row === undefined) throw new Exception('EntityNotFound', { collection: this.collectionName, where });
+		return row;
+	}
+	async findOneClient<K extends Keys<T> = never, CF extends string = never>(
+		where: WhereOr<T>,
+		other?: Other<T, K, CF>,
+	) {
+		const row = await this.findOneOrNull(where, other);
+		if (row === undefined) throw new ClientException('EntityNotFound', { collection: this.collectionName, where });
 		return row;
 	}
 	async findAll<K extends Keys<T> = never, CF extends string = ''>(where: WhereOr<T>, other: Other<T, K, CF> = {}) {
@@ -390,8 +404,8 @@ function dbQueryToString(dbQuery: DBQuery, allValues: QueryValue[]) {
 }
 
 /* istanbul ignore next */
-function never(never?: never): never {
-	throw new Error(`Never possible: ${never}`);
+function never(value?: never): never {
+	throw new Exception(`Never possible value`, { value });
 }
 
 function maybe<T>(val: T): T | undefined {
@@ -410,7 +424,7 @@ function queryFactory(getClient: () => Promise<PoolClient>, release: boolean): Q
 				client.release();
 			}
 		} catch (err) {
-			throw new DBQueryError(queryStr, values, (err as Error).message);
+			throw new Exception('DB query error', { query: queryStr, values, message: (err as Error).message });
 		}
 		return res.rows as T[];
 	};
@@ -487,7 +501,7 @@ class DBQueries {
 
 function field(field: string) {
 	if (!/^[a-z_][a-z\d$_\-]+$/i.test(field))
-		throw new Error(`Field name contains unacceptable characters: ${JSON.stringify(field)}`);
+		throw new Exception(`Field name contains unacceptable characters`, { field });
 	return new DBRaw(`"${field}"`);
 }
 
@@ -513,21 +527,17 @@ export async function readMigrationsFromDir(dir: string) {
 	for (let i = 0; i < files.length; i++) {
 		const file = files[i];
 		const m = file.match(/^\d{4}-\d{2}-\d{2} \d{2}-\d{2} (.*?)\.sql$/);
-		if (!m) throw new Error(`Incorrect migration filename: ${file}`);
+		if (!m) throw new Exception(`Incorrect migration filename`, { file });
 		const migrationName = m[1];
 		if (migrations.find(m => m.name === migrationName))
-			throw new Error(`Migration with name "${migrationName}" already exists`);
+			throw new Exception(`Migration already exists`, { migrationName });
 		const up = await readFile(dir + '/' + file, 'utf8');
 		migrations.push({ name: migrationName, up: up });
 	}
 	return migrations;
 }
 
-export async function migrateUp(
-	db: BaseDB<unknown>,
-	migrations: Migration[],
-	logger: { info: (...args: unknown[]) => void },
-) {
+export async function migrateUp(db: BaseDB<unknown>, migrations: Migration[]) {
 	await db.transaction(async trx => {
 		await createMigrationTable(trx);
 		const lastAppliedMigration = (await trx.query<{ name: string }>(
@@ -537,7 +547,7 @@ export async function migrateUp(
 		let newMigrations = migrations;
 		if (lastAppliedMigration) {
 			const idx = migrations.findIndex(m => m.name === lastAppliedMigration.name);
-			if (idx === -1) throw new Error(`${lastAppliedMigration.name} is not found in migrations`);
+			if (idx === -1) throw new Exception(`name is not found in migrations`, { name: lastAppliedMigration.name });
 			newMigrations = migrations.slice(idx + 1);
 		}
 		if (newMigrations.length > 0) {
@@ -545,11 +555,11 @@ export async function migrateUp(
 				const migration = newMigrations[i];
 				try {
 					await trx.query(sql`${new DBRaw(migration.up)}`);
-				} catch (err) {
-					if (err instanceof DBQueryError) {
-						throw new DBQueryError(err.query, err.values, migration.name + ': ' + err.error);
-					}
-					throw err;
+				} catch (_err) {
+					const err = _err as Error;
+					const json =
+						err instanceof BaseException ? { ...err.json, migrationName: migration.name } : { message: err.message };
+					throw new Exception('Migration error', json);
 				}
 			}
 			await trx.query(
@@ -558,7 +568,7 @@ export async function migrateUp(
 					sql`,`,
 				)}`,
 			);
-			logger.info(`Apply new migrations: ${newMigrations.map(m => m.name).join(', ')}`);
+			logger.info(`Applied new migrations`, { migrations: newMigrations.map(m => m.name) });
 		}
 	});
 }

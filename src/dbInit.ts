@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
-import { logger } from './logger';
-import { migrateUp, createDB, sql, readMigrationsFromDir, SchemaConstraint, DBQueryError } from './Orm/PostgresqlDriver';
+import { migrateUp, createDB, sql, readMigrationsFromDir, SchemaConstraint } from './Orm/PostgresqlDriver';
 import { sleep } from './utils';
+import { logger } from './logger';
 
 export interface DBOptions {
 	config: {
@@ -14,7 +14,6 @@ export interface DBOptions {
 	schema: string;
 	errorEntityNotFound: unknown;
 }
-
 
 export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: string, options: DBOptions) {
 	const config = options.config;
@@ -32,15 +31,11 @@ export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: stri
 			await db.query(sql`SELECT 1`);
 			break;
 		} catch (e) {
-			logger.info('Postgres is unavailable: ' + e.message);
+			logger.info('Postgres is unavailable', e);
 			await sleep(1000);
 		}
 	}
-	try {
-		const migrations = await readMigrationsFromDir(projectDir + '/../migrations/');
-		await migrateUp(db, migrations, logger);
-	} catch (e) {
-        throw new Error('Migration error: ' + (e instanceof DBQueryError ? e.error : e.message));
-	}
+	const migrations = await readMigrationsFromDir(projectDir + '/../migrations/');
+	await migrateUp(db, migrations);
 	return db;
 }

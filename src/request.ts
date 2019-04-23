@@ -1,69 +1,71 @@
 import request = require('request');
-import { logger, JsonError } from './logger';
 import { sleep, never } from './utils';
+import { logger, ExternalException, Exception, BaseException } from './logger';
 
 export interface RequestOptions extends request.CoreOptions {
 	attemptsCount?: number;
 	attemptDelay?: number;
 }
+
+type Response = {
+	res: request.Response;
+	statusCode: number;
+	body: Buffer | string | object;
+	error: Error | string | undefined;
+};
+
+function requestAsync(url: string, options: RequestOptions = {}) {
+	return new Promise<Response>((resolve, reject) =>
+		request(url, options, (err: Error | string | undefined, res, body: Buffer | undefined) => {
+			const data = { res, statusCode: res.statusCode, body: body || '', error: err };
+			if (err) return reject(new Exception('Request error', data));
+			return resolve(data);
+		}),
+	);
+}
 export async function requestRaw(url: string, options: RequestOptions = {}) {
-	logger.trace({ url, options }, 'Request start');
-	const { attemptsCount = 1, attemptDelay = 1000 } = options;
-	for (let i = 0; i < attemptsCount; i++) {
-		try {
-			return await new Promise<{ res: request.Response; body: Buffer | string | object }>((resolve, reject) =>
-				request(url, options, (err: Error | string | undefined, res, body: Buffer | undefined) => {
-					logger.trace({ url, body }, 'Request response');
-					if (err) return reject(err);
-					if (res.statusCode < 200 || res.statusCode >= 400)
-						return reject(new JsonError('Request reject', { url, statusCode: res.statusCode, body }));
-					resolve({ res, body: body || '' });
-				}),
-			);
-		} catch (e) {
-			if (i < attemptsCount - 1) {
-				logger.trace(`Request error ${url}: ${e.message}`);
+	const { attemptsCount = 5, attemptDelay = 1000 } = options;
+	for (let i = 1; i <= attemptsCount; i++) {
+		logger.trace('Request start', { url, options, attempt: i === 1 ? undefined : i });
+		const res = await requestAsync(url, options);
+		const timeoutError =
+			res.error instanceof Error && (res.error.message === 'ETIMEDOUT' || res.error.message === 'ESOCKETTIMEDOUT');
+		if (timeoutError || res.statusCode >= 500) {
+			if (i < attemptsCount) {
 				await sleep(attemptDelay);
 			} else {
-				Error.captureStackTrace(e);
-				throw e;
+				throw new ExternalException(timeoutError ? 'Request timeout' : '500', res);
 			}
 		}
+		if (res.statusCode >= 400) throw new Exception('400', res);
+		if (res.statusCode >= 200 && res.statusCode < 300) {
+			logger.trace('Request response', res);
+			return res;
+		}
+		throw new Exception('Request error', res);
 	}
 	throw never();
 }
 
-export async function requestJSON<T>(
-	url: string,
-	options?: RequestOptions,
-): Promise<{ data: T; res: request.Response }> {
-	let res;
-	let body;
+export async function requestJSON<T>(url: string, options?: RequestOptions): Promise<{ data: T } & Response> {
+	let d;
 	try {
-		const d = await requestRaw(url, {
-			headers: {
-				'content-type': 'application/json',
-			},
-			...options,
-		});
-		res = d.res;
-		body = d.body;
+		d = await requestRaw(url, { headers: { 'content-type': 'application/json' }, ...options });
 	} catch (e) {
-		let err: Error = e;
-		if (typeof err === 'string') {
-			try {
-				err = JSON.parse(err);
-			} catch (e) {}
+		if (e instanceof BaseException) {
+			const err = e.json as Response;
+			if (typeof err.body === 'string') {
+				try {
+					err.body = JSON.parse(err.body);
+				} catch (e) {}
+			}
 		}
-		throw err;
-	}
-	if (typeof body === 'object' && body !== null && !(body instanceof Buffer)) {
-		return { data: (body as unknown) as T, res };
+		throw e;
 	}
 	try {
-		const json = JSON.parse(body.toString() || '{}') as T;
-		return { data: json, res };
+		const json = JSON.parse(d.body.toString() || '{}') as T;
+		return { ...d, data: json };
 	} catch {
-		throw new JsonError(`Response in not json`, { url, body });
+		throw new Exception(`Response is not json`, d);
 	}
 }

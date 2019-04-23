@@ -1,12 +1,12 @@
-import {QueryParameters, RootResolver, removeItemOrNever, Return, service} from 'backend-base';
+import {QueryParameters, RootResolver, removeItemOrNever, Return, service, ClientException} from 'backend-base';
 import {TodoID, TodoListID, User} from './DBSchema';
-import {ClientError, Errors} from './Errors';
+import {Errors} from './Errors';
 import {Account, Mutation, Query, Todo, TodoList} from './GraphQLSchema';
 import {DB} from './DB';
 
 export function withAuth<Arg, T>(cb: (arg: Arg, ctx: ContextWithUser) => T) {
     return (args: Arg, req: Context) => {
-        if (req.session.user === undefined) throw new ClientError(Errors.AuthRequired);
+        if (req.session.user === undefined) throw new ClientException(Errors.AuthRequired);
         return cb(args, req as ContextWithUser);
     };
 }
@@ -42,7 +42,7 @@ const LOGIN_REGEXP = /^[\w_~;:#$%^&*+=`!()[?.\-\]]{5,30}$/;
 const PASS_REGEXP = /^.{5,128}$/;
 
 async function login(args: Params['login'], ctx: Context) {
-    if (ctx.session.user) throw new ClientError(Errors.YouAreAlreadyLogged);
+    if (ctx.session.user) throw new ClientException(Errors.YouAreAlreadyLogged);
     const user = await service(DB).user.findOne({
         login: args.login,
         password: args.password,
@@ -57,15 +57,15 @@ async function logout(_: {}, ctx: ContextWithUser) {
 }
 
 async function register(args: Params['register'], ctx: Context) {
-    if (ctx.session.user) throw new ClientError(Errors.YouAreAlreadyLogged);
+    if (ctx.session.user) throw new ClientException(Errors.YouAreAlreadyLogged);
     let userExist;
     const db = service(DB);
     try {
         userExist = await db.user.findOne({login: args.login});
     } catch (e) {}
-    if (userExist) throw new ClientError(Errors.UserAlreadyExists);
-    if (!LOGIN_REGEXP.test(args.login)) throw new ClientError(Errors.ValidationFailed, 'login');
-    if (!PASS_REGEXP.test(args.password)) throw new ClientError(Errors.ValidationFailed, 'password');
+    if (userExist) throw new ClientException(Errors.UserAlreadyExists);
+    if (!LOGIN_REGEXP.test(args.login)) throw new ClientException(Errors.ValidationFailed, {field: 'login'});
+    if (!PASS_REGEXP.test(args.password)) throw new ClientException(Errors.ValidationFailed, {field: 'password'});
     await db.user.create({
         id: db.user.genId(),
         login: args.login,

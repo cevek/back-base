@@ -1,3 +1,5 @@
+import { Exception } from './logger';
+
 const map = new WeakMap<object, object>();
 export function injectable<T extends object>(target: T) {
 	return new Proxy(target, {
@@ -22,7 +24,7 @@ const serviceMap = new WeakMap<object, unknown>();
 export function service<T>(Class: new (...args: never[]) => T): T {
 	const instance = serviceMap.get(Class);
 	if (instance === undefined) {
-		throw new Error(`Instance of ${Class.name} is not setted`);
+		throw new Exception(`Instance is not setted`, { name: Class.name });
 	}
 	return instance as T;
 }

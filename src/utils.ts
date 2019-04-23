@@ -1,4 +1,5 @@
 import { createVerify } from 'crypto';
+import { Exception } from './logger';
 
 /* istanbul ignore next */
 export function lastItem<T>(arr: ReadonlyArray<T>): T {
@@ -24,20 +25,12 @@ export function removeItemOrNever<Arr extends ReadonlyArray<T>, T>(arr: Arr, ite
 }
 
 /* istanbul ignore next */
-export function never(never?: never): never {
-	throw new Error(`Never possible: ${never}`);
+export function never(value?: never): never {
+	throw new Exception(`Never possible value`, { value });
 }
 
 export function sleep(ms: number) {
 	return new Promise(res => setTimeout(res, ms));
-}
-
-export function assert(val: boolean, msg = 'Assertaion failed') {
-	if (!val) throw new Error(msg);
-}
-export function nonNull<T>(val: T | undefined, msg = 'value cannot be undefined'): T {
-	if (val === undefined) throw new Error(msg);
-	return val;
 }
 
 export function verifySignature(data: string, signatureBase64: string, publicKey: string) {
@@ -59,7 +52,7 @@ export function webSafeToNormalBase64(safeBase64: string) {
 
 export function getEnv(name: string) {
 	const val = process.env[name];
-	if (val === undefined) throw new Error(`Env variable ${name} should be specified`);
+	if (val === undefined) throw new Exception(`Env variable should be specified`, { name });
 	return val;
 }
 export function getEnvNullable(name: string) {

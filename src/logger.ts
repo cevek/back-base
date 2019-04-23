@@ -1,142 +1,107 @@
-import Logger, { LogLevel } from 'bunyan';
-import { EventEmitter } from 'events';
+import mkdirp from 'mkdirp';
 import { createWriteStream, WriteStream } from 'fs';
 import { dirname } from 'path';
-import { inspect } from 'util';
-import { cleanStackTrace } from './cleanStackTrace';
-import { getEnv, getEnvNullable } from './utils';
-const mkdirp = require('mkdirp');
+import words from './words';
+import { getEnv } from './utils';
+import { IncomingMessage, ClientRequest } from 'http';
 
-export class JsonError extends Error {
-	constructor(msg: string, public json: object) {
-		super(msg);
+export class BaseException extends Error {
+	kind: string;
+	constructor(public name: string, public json?: object) {
+		super(`${new.target.name}: ${name} ${JSON.stringify(json) || ''}`);
+		this.kind = new.target.name;
 	}
 }
+export class ClientException extends BaseException {}
+export class ExternalException extends BaseException {}
+export class Exception extends BaseException {}
 
-enum ConsoleColor {
-	GRAY = 0,
-	RED = 1,
-	GREEN = 2,
-	YELLOW = 3,
-	BLUE = 4,
-	MAGENTA = 5,
-	CYAN = 6,
-}
-function color(text: string, color: ConsoleColor) {
-	return '\u001b[3' + color + ';1m' + text + '\u001b[0m';
-}
-
-const levels = {
-	fatal: ConsoleColor.RED,
-	error: ConsoleColor.RED,
-	info: ConsoleColor.BLUE,
-	warn: ConsoleColor.YELLOW,
-	debug: ConsoleColor.CYAN,
-	trace: ConsoleColor.GRAY,
-} as const;
-
-interface Rec {
-	level: number;
-	time: Date;
-	v: string;
-	pid: string;
-	name: string;
-	hostname: string;
-	msg: string;
-	err?: Error;
-}
-
-class StdoutStream extends EventEmitter {
-	writable = true;
-	end() {}
-	prevTime = new Date();
-
-	write(b: string | Buffer) {
-		const rec = (b as unknown) as Rec;
-		const { name, level, hostname, pid, v, time, msg, err, ...other } = rec;
-		let data = other;
-		if (err instanceof JsonError) data = { ...other, ...err.json };
-		this.out(level, rec.time, msg, data, rec.err);
-		this.prevTime = rec.time;
-		return true;
+export class Logger {
+	protected file: WriteStream;
+	constructor(fileName: string) {
+		mkdirp.sync(dirname(fileName));
+		this.file = createWriteStream(fileName);
 	}
-
-	out(level: number, time: Date, msg: string, data: object, err?: Error) {
-		console.log(
-			`${color(formatTime(new Date(+time)), ConsoleColor.GRAY)} ${color(
-				Logger.nameFromLevel[level],
-				levels[Logger.nameFromLevel[level] as keyof typeof levels],
-			)}`,
-			msg,
-			Object.keys(data).length === 0 ? '' : inspect(data, { compact: false, depth: Infinity }),
-			err ? `\n${cleanStackTrace(err.stack)}` : '',
+	protected log(type: string, name: string, json?: object) {
+		if (!(json instanceof Object)) json = { raw: json };
+		const id = words[Math.floor(words.length * Math.random())];
+		const parentId = '';
+		this.file.write(
+			JSON.stringify([id, parentId, new Date(), type, name, json], (_key, value) => {
+				if (value instanceof Error) {
+					const stack = cleanStackTrace(value.stack);
+					if (value instanceof BaseException) {
+						return { name: value.name, stack, json: value.json };
+					}
+					return { message: value.message, stack };
+				}
+				if (value instanceof IncomingMessage) {
+					return { __type: 'responseObject' };
+				}
+				if (value instanceof ClientRequest) {
+					return { __type: 'requestObject' };
+				}
+				return value;
+			}),
 		);
 	}
-}
 
-class FileStream extends StdoutStream {
-	private fileStream: WriteStream;
-	constructor(private fileName: string) {
-		super();
-		mkdirp.sync(dirname(this.fileName));
-		this.fileStream = createWriteStream(this.fileName, { flags: 'a' });
+	fromError(error: Error) {
+		if (error instanceof Error) {
+			if (error instanceof BaseException) {
+				if (error.kind === ClientException.name) {
+					return this.clientError(error.name, error);
+				}
+				if (error.kind === ExternalException.name) {
+					return this.external(error.name, error);
+				}
+				if (error.kind === Exception.name) {
+					return this.error(error.name, error);
+				}
+			}
+			return this.error(error.constructor.name, error);
+		}
+		return this.error('Raw error', (error as {}) instanceof Object ? error : { error });
 	}
-	out(level: number, time: Date, msg: string, data: object, err?: Error) {
-		const json = Object.keys(data).length === 0 ? '' : inspect(data, { compact: false, depth: Infinity });
-		const errStack = err ? `\n${cleanStackTrace(err.stack)}` : '';
-		const d = new Date(+time);
-		this.fileStream.write(
-			`${formatDate(d)} ${formatTime(d)} ${Logger.nameFromLevel[level]} ${msg}${json}${errStack}\n\n`,
-		);
+
+	info(name: string, json?: object) {
+		return this.log('info', name, json);
+	}
+	clientError(name: string, json?: object) {
+		return this.log('clientError', name, json);
+	}
+	warn(name: string, json?: object) {
+		return this.log('warn', name, json);
+	}
+	trace(name: string, json?: object) {
+		return this.log('trace', name, json);
+	}
+	args(args?: object) {
+		return this.log('trace', 'args', args);
+	}
+	error(name: string, json?: object) {
+		return this.log('error', name, json);
+	}
+	external(name: string, json?: object) {
+		return this.log('external', name, json);
 	}
 }
 
-function formatTime(t: Date) {
-	return `${('0' + t.getHours()).substr(-2)}:${('0' + t.getMinutes()).substr(-2)}:${('0' + t.getSeconds()).substr(-2)}`;
-}
-function formatDate(t: Date) {
-	return `${t.getFullYear()}-${('0' + (t.getMonth() + 1)).substr(-2)}-${('0' + t.getDate()).substr(-2)}`;
-}
-// function formatDiff(time: Date, time2: Date) {
-// 	const ms = time2.getTime() - time.getTime();
-// 	if (ms > 60_000) return `+${(ms / 60_000).toPrecision(1)}min`;
-// 	if (ms > 1000) return `+${(ms / 1000).toPrecision(1)}s`;
-// 	return `+${Math.round(ms / 10) * 10}ms`;
-// }
+export const logger = new Logger(getEnv('LOG_FILE'));
 
-const errorLogFile = getEnv('ERROR_LOG_FILE');
-const traceLogFile = getEnv('TRACE_LOG_FILE');
-const logLevel = (getEnvNullable('LOG_LEVEL') || 'info') as LogLevel;
-
-export const logger = new Logger({
-	name: 'app',
-	streams:
-		process.env.NODE_ENV === 'production'
-			? [
-					{
-						level: 'error' as LogLevel,
-						type: 'raw',
-						stream: new FileStream(errorLogFile),
-					},
-					{
-						level: 'trace' as LogLevel,
-						type: 'raw',
-						stream: new FileStream(traceLogFile),
-					},
-					{
-						level: logLevel,
-						type: 'raw',
-						stream: new StdoutStream(),
-					},
-			  ]
-			: [
-					{
-						type: 'raw',
-						level: (getEnvNullable('LOG_LEVEL') || 'info') as LogLevel,
-						stream: new StdoutStream(),
-					},
-			  ],
-	serializers: {
-		err: err => err,
-	},
-});
+const extractPathRegex = /\s+at.*?\((.*?)\)/;
+const pathRegex = /^internal|(.*?\/node_modules\/(ts-node)\/)/;
+export function cleanStackTrace(stack: string | undefined) {
+	if (!stack) return;
+	return stack
+		.replace(/\\/g, '/')
+		.split('\n')
+		.filter(line => {
+			const pathMatches = line.match(extractPathRegex);
+			if (pathMatches === null) return true;
+			const match = pathMatches[1];
+			return !pathRegex.test(match);
+		})
+		.filter(line => line.trim() !== '')
+		.join('\n');
+}
