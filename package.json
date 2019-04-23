@@ -1,6 +1,6 @@
 {
 	"name": "backend-base",
-	"version": "1.0.28",
+	"version": "1.0.30",
 	"description": "",
 	"main": "dist/index",
 	"types": "dist/index",

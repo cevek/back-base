@@ -120,13 +120,12 @@ class Collection<T extends CollectionConstraint> {
 	private loader: DataLoader<T['id'], T | undefined>;
 	name: Column;
 	fields: { [P in keyof T]: Column };
-	constructor(public collectionName: string, private query: QueryFun, prevCollection: Collection<T> | undefined) {
+	constructor(public collectionName: string, private query: QueryFun) {
 		this.name = field(collectionName);
 		this.fields = new Proxy({} as this['fields'], {
 			get: (_, key: string) => sql`${this.name}.${field(key)}`,
 		});
-		const prevLoader = prevCollection && prevCollection.loader;
-		this.loader = prevLoader || new DataLoader(async ids => this.loadById(ids), { cache: false });
+		this.loader = new DataLoader(async ids => this.loadById(ids), { cache: false });
 	}
 	private async loadById(ids: T['id'][]) {
 		const rows = await this.findAll({ id: { in: ids } } as Where<T>);
@@ -426,12 +425,12 @@ type QueryFun = <T>(query: DBQuery) => Promise<T[]>;
 
 export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {
 	const query = queryFactory(() => pool.connect(), true);
-	const db = createProxy<Schema>(undefined, query);
+	const db = createProxy<Schema>(query);
 	db.transaction = async (trx, rollback) => {
 		const trxClient = await pool.connect();
 		const query = queryFactory(async () => trxClient, false);
 		try {
-			const trxDB = createProxy<Schema>(db, query);
+			const trxDB = createProxy<Schema>(query);
 			await trxClient.query('BEGIN');
 			await trx(trxDB);
 			await trxClient.query('COMMIT');
@@ -448,15 +447,14 @@ export async function createDB<Schema extends SchemaConstraint>(pool: Pool) {
 	return db;
 }
 
-function createProxy<Schema extends SchemaConstraint>(rootDB: BaseDB<Schema> | undefined, query: QueryFun) {
+function createProxy<Schema extends SchemaConstraint>(query: QueryFun) {
 	type CollectionType = Schema[keyof Schema];
 	const db = { query, transaction: {} } as BaseDB<Schema>;
 	return new Proxy(db, {
 		get(_, key: keyof Schema) {
 			const collection = maybe(db[key]);
 			if (collection === undefined) {
-				const prevCollection = rootDB === undefined ? undefined : (rootDB[key] as Collection<CollectionType>);
-				const newCollection = new Collection<CollectionType>(key as string, query, prevCollection);
+				const newCollection = new Collection<CollectionType>(key as string, query);
 				db[key] = newCollection as BaseDB<Schema>[keyof Schema];
 				return newCollection;
 			}
