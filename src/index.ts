@@ -125,12 +125,14 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		graphqlHTTP({
 			schema: schema,
 			rootValue: options.graphql.resolver,
-			formatError(err) {
-				const error = err.originalError || err;
-				if (error instanceof GraphQLError) {
-					return error;
-				}
-				return handleError(error).error;
+			...{
+				customFormatErrorFn(err: GraphQLError) {
+					const error = err.originalError || err;
+					if (error instanceof GraphQLError) {
+						return error;
+					}
+					return handleError(error).error;
+				},
 			},
 		}),
 	);
