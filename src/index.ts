@@ -22,7 +22,9 @@ import serveStatic from 'serve-static';
 import { readFileSync } from 'fs';
 import https from 'https';
 import http from 'http';
-import { ClientException, logger } from './logger';
+import { ClientException, logger, Exception } from './logger';
+import { Pool } from 'pg';
+import findUp from 'find-up';
 
 export * from './di';
 export * from './graphQLUtils';
@@ -62,11 +64,16 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	port: number;
 }) {
 	logger.info('ENV', { ENV });
-	const projectDir = dirname(require.main!.filename);
+	const packageJsonFile = await findUp('package.json', { cwd: require.main!.filename });
+	if (!packageJsonFile) throw new Exception('package.json is not found');
+	const projectDir = dirname(packageJsonFile);
 
 	let db: BaseDB<DBSchema> | undefined;
+	let dbPool: Pool | undefined;
 	if (options.db) {
-		db = await dbInit(projectDir, options.db);
+		const dbRes = await dbInit<DBSchema>(projectDir, options.db);
+		db = dbRes.db;
+		dbPool = dbRes.pool;
 	}
 	const express = Express();
 	express.disable('x-powered-by');
@@ -165,7 +172,9 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 	return {
 		server,
 		express,
+		projectDir,
 		db: db!,
+		dbPool: dbPool!,
 	};
 }
 

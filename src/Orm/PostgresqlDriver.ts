@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import DataLoader from 'dataloader';
 import { readdir, readFile } from 'fs-extra';
-import { Exception, BaseException, ClientException, logger } from 'src/logger';
+import { Exception, BaseException, ClientException, logger } from '../logger';
 
 export type BaseDB<Schema> = Collections<Schema> & {
 	transaction: TransactionFun<Schema>;
@@ -122,9 +122,9 @@ class Collection<T extends CollectionConstraint> {
 	name: Column;
 	fields: { [P in keyof T]: Column };
 	constructor(public collectionName: string, private query: QueryFun) {
-		this.name = field(collectionName);
+		this.name = dbField(collectionName);
 		this.fields = new Proxy({} as this['fields'], {
-			get: (_, key: string) => sql`${this.name}.${field(key)}`,
+			get: (_, key: string) => sql`${this.name}.${dbField(key)}`,
 		});
 		this.loader = new DataLoader(async ids => this.loadById(ids), { cache: false });
 	}
@@ -185,9 +185,9 @@ class Collection<T extends CollectionConstraint> {
 		const values: DBQuery[] = [];
 		for (const key in data) {
 			let val = data[key] as DBQuery;
-			if (isIncrement(val)) val = sql`${field(key)} + ${val.increment}`;
-			else if (isDecrement(val)) val = sql`${field(key)} - ${val.decrement}`;
-			values.push(sql`${field(key)} = ${val}`);
+			if (isIncrement(val)) val = sql`${dbField(key)} + ${val.increment}`;
+			else if (isDecrement(val)) val = sql`${dbField(key)} - ${val.decrement}`;
+			values.push(sql`${dbField(key)} = ${val}`);
 		}
 		const valueQuery = joinQueries(values, sql`, `);
 		await this.query(sql`UPDATE ${this.name} SET ${valueQuery}${prepareWhereOr({ id: id })}`);
@@ -207,7 +207,7 @@ class Collection<T extends CollectionConstraint> {
 			if (key === 'id' && value === 'auto') value = this.genId() as never;
 			values.push(value);
 		}
-		const keyQuery = joinQueries(keys.map(key => sql`${field(key)}`), sql`, `);
+		const keyQuery = joinQueries(keys.map(key => sql`${dbField(key)}`), sql`, `);
 		const valueQuery = joinQueries(values.map(val => sql`${val}`), sql`, `);
 		let onConflictFields;
 		if (params.noErrorIfConflict !== undefined) {
@@ -216,7 +216,7 @@ class Collection<T extends CollectionConstraint> {
 			}
 			// eslint-disable-next-line
 			else if (typeof params.noErrorIfConflict === 'string') {
-				onConflictFields = sql`(${field(params.noErrorIfConflict)})`;
+				onConflictFields = sql`(${dbField(params.noErrorIfConflict)})`;
 			} else {
 				onConflictFields = sql`(${params.noErrorIfConflict})`;
 			}
@@ -254,11 +254,11 @@ function prepareFields(
 	fields: ReadonlyArray<string | DBQuery> | undefined,
 	customFields: { [key: string]: DBQuery } | undefined,
 ) {
-	const arr = fields ? fields.map(f => sql`${typeof f === 'string' ? field(f) : f}`) : [];
+	const arr = fields ? fields.map(f => sql`${typeof f === 'string' ? dbField(f) : f}`) : [];
 	if (arr.length === 0) arr.push(sql`*`);
 	if (customFields) {
 		for (const f in customFields) {
-			arr.push(sql`(${customFields[f]}) AS ${field(f)}`);
+			arr.push(sql`(${customFields[f]}) AS ${dbField(f)}`);
 		}
 	}
 	return joinQueries(arr, sql`, `);
@@ -281,7 +281,7 @@ function prepareWhere(where: Where<CollectionConstraint>) {
 			queries.push(where);
 			continue;
 		}
-		const fieldRaw = field(f);
+		const fieldRaw = dbField(f);
 		const operators = where[f] as AllOperators | string;
 		if (typeof operators === 'object' && !Array.isArray(operators)) {
 			for (const op in operators) {
@@ -367,8 +367,8 @@ function prepareOther<T>(other: Other<T, Keys<T>, never> | undefined) {
 	if (!other) return sql``;
 	const queries: DBQuery[] = [];
 	if (other.order) {
-		if (other.order.asc) queries.push(sql` ORDER BY ${field(other.order.asc)} ASC`);
-		else if (other.order.desc) queries.push(sql` ORDER BY ${field(other.order.desc)} DESC`);
+		if (other.order.asc) queries.push(sql` ORDER BY ${dbField(other.order.asc)} ASC`);
+		else if (other.order.desc) queries.push(sql` ORDER BY ${dbField(other.order.desc)} DESC`);
 	}
 	if (other.limit !== undefined) queries.push(sql` LIMIT ${other.limit}`);
 	if (other.offset !== undefined) queries.push(sql` OFFSET ${other.offset}`);
@@ -479,9 +479,10 @@ function createProxy<Schema extends SchemaConstraint>(query: QueryFun) {
 
 type QueryValue = DBValue | DBRaw | DBQuery | DBQueries;
 
-class DBRaw {
+export class DBRaw {
 	constructor(public readonly raw: string) {}
 }
+
 class DBQuery {
 	constructor(
 		//@ts-ignore
@@ -499,7 +500,7 @@ class DBQueries {
 	constructor(public readonly queries: ReadonlyArray<DBQuery>, public readonly separator: DBQuery | undefined) {}
 }
 
-function field(field: string) {
+export function dbField(field: string) {
 	if (!/^[a-z_][a-z\d$_\-]+$/i.test(field))
 		throw new Exception(`Field name contains unacceptable characters`, { field });
 	return new DBRaw(`"${field}"`);

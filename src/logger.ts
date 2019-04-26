@@ -7,8 +7,8 @@ import { IncomingMessage, ClientRequest } from 'http';
 
 export class BaseException extends Error {
 	kind: string;
-	constructor(public name: string, public json?: object) {
-		super(`${new.target.name}: ${name} ${JSON.stringify(json) || ''}`);
+	constructor(public name: string, public json: object = {}) {
+		super(`${new.target.name}: ${name}`);
 		this.kind = new.target.name;
 	}
 }
@@ -26,42 +26,24 @@ export class Logger {
 		if (!(json instanceof Object)) json = { raw: json };
 		const id = words[Math.floor(words.length * Math.random())];
 		const parentId = '';
-		this.file.write(
-			JSON.stringify([id, parentId, new Date(), type, name, json], (_key, value) => {
-				if (value instanceof Error) {
-					const stack = cleanStackTrace(value.stack);
-					if (value instanceof BaseException) {
-						return { name: value.name, stack, json: value.json };
-					}
-					return { message: value.message, stack };
+		const str = JSON.stringify([id, parentId, new Date(), type, name, json], (_key, value) => {
+			if (value instanceof Error) {
+				const stack = cleanStackTrace(value.stack);
+				if (value instanceof BaseException) {
+					return { name: value.name, stack, json: value.json };
 				}
-				if (value instanceof IncomingMessage) {
-					return { __type: 'responseObject' };
-				}
-				if (value instanceof ClientRequest) {
-					return { __type: 'requestObject' };
-				}
-				return value;
-			}),
-		);
-	}
-
-	fromError(error: Error) {
-		if (error instanceof Error) {
-			if (error instanceof BaseException) {
-				if (error.kind === ClientException.name) {
-					return this.clientError(error.name, error);
-				}
-				if (error.kind === ExternalException.name) {
-					return this.external(error.name, error);
-				}
-				if (error.kind === Exception.name) {
-					return this.error(error.name, error);
-				}
+				return { message: value.message, stack };
 			}
-			return this.error(error.constructor.name, error);
-		}
-		return this.error('Raw error', (error as {}) instanceof Object ? error : { error });
+			if (value instanceof IncomingMessage) {
+				return { __type: 'responseObject' };
+			}
+			if (value instanceof ClientRequest) {
+				return { __type: 'requestObject' };
+			}
+			return value;
+		});
+		this.file.write(str);
+		console.log(str);
 	}
 
 	info(name: string, json?: object) {
@@ -79,7 +61,25 @@ export class Logger {
 	args(args?: object) {
 		return this.log('trace', 'args', args);
 	}
-	error(name: string, json?: object) {
+	error(name: string | Error, json?: object) {
+		if (name instanceof Error) {
+			const error = name;
+			if (error instanceof BaseException) {
+				if (error.kind === ClientException.name) {
+					return this.clientError(error.name, error);
+				}
+				if (error.kind === ExternalException.name) {
+					return this.external(error.name, error);
+				}
+				if (error.kind === Exception.name) {
+					return this.log('error', error.name, error);
+				}
+			}
+			return this.log('error', error.constructor.name, error);
+		}
+		if (typeof name !== 'string') {
+			return this.log('error', 'Raw error', (name as {}) instanceof Object ? name : { error: name });
+		}
 		return this.log('error', name, json);
 	}
 	external(name: string, json?: object) {

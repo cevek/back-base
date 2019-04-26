@@ -5,7 +5,7 @@ export class TestSession {
 	private jar = request.jar();
 	constructor(public port: number) {}
 	async query<T>(query: string, error = '', result?: {}): Promise<T> {
-		const res = await this.req<{ data: T; errors: {}[] }>('/api/graphql', { query });
+		const res = await this.request<{ data: T; errors: {}[] }>('post', '/api/graphql', { query });
 		const errorMsg = res.data.errors && res.data.errors[0];
 		/* istanbul ignore next */
 		if (error) {
@@ -24,7 +24,9 @@ export class TestSession {
 		}
 		return res.data.data;
 	}
-	private req<T>(url: string, json: {}) {
-		return requestJSON<T>(`http://localhost:${this.port}${url}`, { method: 'post', jar: this.jar, json });
+	request<T>(method: string, url: string, json?: {}) {
+		return requestJSON<T>(`http://localhost:${this.port}${url}`, { method, jar: this.jar, json });
 	}
 }
+
+

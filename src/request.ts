@@ -69,3 +69,11 @@ export async function requestJSON<T>(url: string, options?: RequestOptions): Pro
 		throw new Exception(`Response is not json`, d);
 	}
 }
+
+export function mockJsonRequest(_method: string, _url: string, _json: object | undefined, _result: object) {}
+export function mockGetJsonRequest(url: string, result: object) {
+	return mockJsonRequest('get', url, undefined, result);
+}
+export function mockPostJsonRequest(url: string, json: object | undefined, result: object) {
+	return mockJsonRequest('post', url, json, result);
+}

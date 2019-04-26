@@ -10,6 +10,7 @@ export interface DBOptions {
 		database: string | undefined;
 		host?: string;
 		port?: number | string | number;
+		createIfNotExists?: boolean;
 	};
 	schema: string;
 	errorEntityNotFound: unknown;
@@ -17,15 +18,14 @@ export interface DBOptions {
 
 export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: string, options: DBOptions) {
 	const config = options.config;
-	const db = await createDB<DBSchema>(
-		new Pool({
-			password: config.password,
-			user: config.user,
-			database: config.database,
-			host: config.host,
-			port: typeof config.port === 'string' ? Number(config.port) : config.port,
-		}),
-	);
+	const pool = new Pool({
+		password: config.password,
+		user: config.user,
+		database: config.database,
+		host: config.host,
+		port: typeof config.port === 'string' ? Number(config.port) : config.port,
+	});
+	const db = await createDB<DBSchema>(pool);
 	while (true) {
 		try {
 			await db.query(sql`SELECT 1`);
@@ -35,7 +35,7 @@ export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: stri
 			await sleep(1000);
 		}
 	}
-	const migrations = await readMigrationsFromDir(projectDir + '/../migrations/');
+	const migrations = await readMigrationsFromDir(projectDir + '/migrations/');
 	await migrateUp(db, migrations);
-	return db;
+	return { db, pool };
 }
