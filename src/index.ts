@@ -114,6 +114,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		if (error instanceof ClientException) {
 			return { error: error.name, status: 400 };
 		}
+		logger.error(error);
 		/* istanbul ignore next */
 		return { error: options.errors.unknown, status: 500 };
 	}
