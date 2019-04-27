@@ -25,6 +25,7 @@ import http from 'http';
 import { ClientException, logger, Exception } from './logger';
 import { Pool } from 'pg';
 import findUp from 'find-up';
+import { sleep } from './utils';
 
 export * from './di';
 export * from './graphQLUtils';
@@ -39,7 +40,7 @@ export const bodyParser = bodyparser;
 
 export const PRODUCTION = ENV === 'production';
 
-export async function createGraphqApp<DBSchema extends SchemaConstraint>(options: {
+interface Options {
 	https?: {
 		privateKeyFile: string;
 		certificateFile: string;
@@ -62,90 +63,136 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 		unknown: unknown;
 	};
 	port: number;
-}) {
-	logger.info('ENV', { ENV });
-	const packageJsonFile = await findUp('package.json', { cwd: require.main!.filename });
-	if (!packageJsonFile) throw new Exception('package.json is not found');
-	const projectDir = dirname(packageJsonFile);
+}
 
+interface Result<DBSchema extends SchemaConstraint> {
+	server: https.Server | http.Server;
+	express: Express.Express;
+	projectDir: string;
+	db: BaseDB<DBSchema>;
+	dbPool: Pool;
+}
+
+let EXITING = false;
+export async function createGraphqApp<DBSchema extends SchemaConstraint>(
+	options: Options,
+	runMiddlewares?: (app: Result<DBSchema>) => Promise<void>,
+): Promise<Result<DBSchema>> {
 	let db: BaseDB<DBSchema> | undefined;
 	let dbPool: Pool | undefined;
-	if (options.db) {
-		const dbRes = await dbInit<DBSchema>(projectDir, options.db);
-		db = dbRes.db;
-		dbPool = dbRes.pool;
-	}
-	const express = Express();
-	express.disable('x-powered-by');
+	try {
+		logger.info('ENV', { ENV });
+		const packageJsonFile = await findUp('package.json', { cwd: require.main!.filename });
+		if (!packageJsonFile) throw new Exception('package.json is not found');
+		const projectDir = dirname(packageJsonFile);
 
-	if (options.session) {
-		express.use(
-			session({
-				name: 'sid',
-				resave: true,
-				saveUninitialized: true,
-				...options.session,
+		if (options.db) {
+			const dbRes = await dbInit<DBSchema>(projectDir, options.db);
+			db = dbRes.db;
+			dbPool = dbRes.pool;
+		}
+		const express = Express();
+		express.disable('x-powered-by');
+		express.use((_req, res, next) => {
+			if (EXITING) {
+				res.status(503);
+				res.send({ status: 'error', error: { message: 'Service unavailable' } });
+				return;
+			}
+			next();
+		});
+
+		if (options.session) {
+			express.use(
+				session({
+					name: 'sid',
+					resave: true,
+					saveUninitialized: true,
+					...options.session,
+				}),
+			);
+		}
+
+		if (options.static) {
+			express.use(serveStatic(options.static.rootDir, options.static.options));
+		}
+
+		if (!PRODUCTION) {
+			express.use(cors());
+		}
+		if (options.parcel) {
+			const Bundler = require('parcel-bundler');
+			const bundler = new Bundler(options.parcel.indexFilename, { cache: false }) as {
+				middleware(): Express.RequestHandler;
+			};
+			express.use(bundler.middleware());
+		}
+
+		const schema = createSchema(options.graphql.schema, {
+			customScalarFactory: type =>
+				type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
+		});
+
+		function handleError(error: Error) {
+			debugger;
+			if (error instanceof ClientException) {
+				return { error: error.name, status: 400 };
+			}
+			logger.error(error);
+			/* istanbul ignore next */
+			return { error: options.errors.unknown, status: 500 };
+		}
+
+		// console.log(printSchema(schema));
+		express.get(
+			'/api/graphql',
+			graphqlHTTP({
+				schema: schema,
+				rootValue: options.graphql.resolver,
+				graphiql: true,
 			}),
 		);
-	}
-
-	if (options.static) {
-		express.use(serveStatic(options.static.rootDir, options.static.options));
-	}
-
-	if (!PRODUCTION) {
-		express.use(cors());
-	}
-	if (options.parcel) {
-		const Bundler = require('parcel-bundler');
-		const bundler = new Bundler(options.parcel.indexFilename, { cache: false }) as {
-			middleware(): Express.RequestHandler;
-		};
-		express.use(bundler.middleware());
-	}
-
-	const schema = createSchema(options.graphql.schema, {
-		customScalarFactory: type =>
-			type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
-	});
-
-	function handleError(error: Error) {
-		debugger;
-		if (error instanceof ClientException) {
-			return { error: error.name, status: 400 };
-		}
-		logger.error(error);
-		/* istanbul ignore next */
-		return { error: options.errors.unknown, status: 500 };
-	}
-
-	// console.log(printSchema(schema));
-	express.get(
-		'/api/graphql',
-		graphqlHTTP({
-			schema: schema,
-			rootValue: options.graphql.resolver,
-			graphiql: true,
-		}),
-	);
-	express.post(
-		'/api/graphql',
-		graphqlHTTP({
-			schema: schema,
-			rootValue: options.graphql.resolver,
-			...{
-				customFormatErrorFn(err: GraphQLError) {
-					const error = err.originalError || err;
-					if (error instanceof GraphQLError) {
-						return error;
-					}
-					return handleError(error).error;
+		express.post(
+			'/api/graphql',
+			graphqlHTTP({
+				schema: schema,
+				rootValue: options.graphql.resolver,
+				...{
+					customFormatErrorFn(err: GraphQLError) {
+						const error = err.originalError || err;
+						if (error instanceof GraphQLError) {
+							return error;
+						}
+						return handleError(error).error;
+					},
 				},
-			},
-		}),
-	);
+			}),
+		);
 
-	setTimeout(() => {
+		const server = options.https
+			? https.createServer(
+					{
+						key: readFileSync(options.https.privateKeyFile, 'utf8'),
+						cert: readFileSync(options.https.certificateFile, 'utf8'),
+					},
+					express,
+			  )
+			: http.createServer(express);
+
+		const port = options.https ? options.https.port || 4443 : options.port;
+		server.listen(port, () => logger.info(`server starts on port`, { port }));
+		const result = {
+			server,
+			express,
+			projectDir,
+			db: db!,
+			dbPool: dbPool!,
+		};
+
+		if (runMiddlewares) {
+			await runMiddlewares(result);
+		}
+
 		/* istanbul ignore next */
 		express.use((err: any, _: Express.Request, res: Express.Response, next: Express.NextFunction) => {
 			const { error, status } = handleError(err);
@@ -155,46 +202,47 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(options
 			res.status(status);
 			res.send({ status: 'error', error: error });
 		});
-	});
-
-	const server = options.https
-		? https.createServer(
-				{
-					key: readFileSync(options.https.privateKeyFile, 'utf8'),
-					cert: readFileSync(options.https.certificateFile, 'utf8'),
-				},
-				express,
-		  )
-		: http.createServer(express);
-
-	const port = options.https ? options.https.port || 4443 : options.port;
-	server.listen(port, () => logger.info(`server starts on port`, { port }));
-
-	return {
-		server,
-		express,
-		projectDir,
-		db: db!,
-		dbPool: dbPool!,
-	};
+	
+		return result;
+	} catch (err) {
+		if (dbPool) {
+			await dbPool.end();
+		}
+		throw err;
+	}
 }
 
-export function asyncMiddleware(
-	fn: (req: Express.Request, res: Express.Response) => Promise<unknown>,
-): Express.Handler {
+let activeThreadsCount = 0;
+export function asyncThread(fn: (req: Express.Request, res: Express.Response) => Promise<unknown>): Express.Handler {
 	return (req, res, next) => {
-		fn(req, res).then(ret => {
-			res.send(ret || { status: 'ok' });
-		}, next);
+		activeThreadsCount++;
+		fn(req, res)
+			.then(ret => res.send(ret || { status: 'ok' }), next)
+			.finally(() => activeThreadsCount--);
 	};
 }
 
-process.on('unhandledRejection', reason => {
-	logger.warn('Unhandled Promise rejection', { reason });
+[`SIGINT`, `SIGUSR1`, `SIGUSR2`, `SIGTERM`].forEach(eventType => {
+	process.on(eventType as 'exit', async code => {
+		EXITING = true;
+		logger.info('Exit requested', { eventType, code, activeThreadsCount });
+		let softExit = false;
+		for (let i = 0; i < 300; i++) {
+			if (activeThreadsCount === 0) {
+				softExit = true;
+				break;
+			}
+			await sleep(100);
+		}
+		if (softExit) {
+			logger.info('Exit');
+		} else {
+			logger.warn('Force Exit', { activeThreadsCount });
+		}
+		process.exit();
+	});
 });
-process.on('uncaughtException', err => {
-	logger.error('UncaughtException', err);
-});
-process.on('warning', warning => {
-	logger.warn('Warning', { warning });
-});
+
+process.on('unhandledRejection', reason => logger.warn('Unhandled Promise rejection', { reason }));
+process.on('uncaughtException', err => logger.error('UncaughtException', err));
+process.on('warning', warning => logger.warn('Warning', { warning }));
