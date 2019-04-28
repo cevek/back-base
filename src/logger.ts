@@ -1,49 +1,91 @@
 import mkdirp from 'mkdirp';
-import { createWriteStream, WriteStream } from 'fs';
+import { createWriteStream, fstatSync, openSync, renameSync, readFileSync } from 'fs';
 import { dirname } from 'path';
 import words from './words';
-import { getEnv } from './utils';
 import { IncomingMessage, ClientRequest } from 'http';
+import findUp = require('find-up');
 
-export class BaseException extends Error {
+export class BaseException<T> extends Error {
 	kind: string;
-	constructor(public name: string, public json: object = {}) {
-		super(`${new.target.name}: ${name}`);
+	constructor(public name: string, public json = {} as T) {
+		super();
 		this.kind = new.target.name;
 	}
 }
-export class ClientException extends BaseException {}
-export class ExternalException extends BaseException {}
-export class Exception extends BaseException {}
+export class ClientException<T = object> extends BaseException<T> {}
+export class ExternalException<T = object> extends BaseException<T> {}
+export class Exception<T = object> extends BaseException<T> {}
 
+type Levels = keyof typeof levels;
+
+interface LoggerSettings {
+	streams: { level: Levels; file?: string; stdout?: boolean; rotate?: 'daily' }[];
+}
 export class Logger {
-	protected file: WriteStream;
-	constructor(fileName: string) {
-		mkdirp.sync(dirname(fileName));
-		this.file = createWriteStream(fileName);
+	protected files: {
+		level: number;
+		name: string;
+		createdAt: Date;
+		stream: NodeJS.WritableStream;
+		dailyRotate: boolean;
+	}[] = [];
+	constructor(protected settings: LoggerSettings) {
+		for (const stream of settings.streams) {
+			const level = levels[stream.level];
+			if (stream.file) {
+				mkdirp.sync(dirname(stream.file));
+				let createdAt = new Date();
+				try {
+					createdAt = fstatSync(openSync(stream.file, 'r')).ctime;
+				} catch (e) {}
+				const file = {
+					level,
+					name: stream.file,
+					stream: createWriteStream(stream.file),
+					createdAt,
+					dailyRotate: stream.rotate === 'daily',
+				};
+				this.files.push(file);
+			}
+			if (stream.stdout) {
+				this.files.push({
+					level,
+					name: 'stdout',
+					stream: process.stdout,
+					createdAt: new Date(),
+					dailyRotate: false,
+				});
+			}
+		}
+		this.selectFile();
 	}
-	protected log(type: string, name: string, json?: object) {
+
+	protected selectFile() {
+		const d = new Date();
+		for (const file of this.files) {
+			if (file.dailyRotate) {
+				const d2 = file.createdAt;
+				if (d.getDate() !== d2.getDate() || d.getMonth() !== d2.getMonth() || d.getFullYear() !== d2.getFullYear()) {
+					file.stream.end();
+					const historyName =
+						file.name.replace(/\.log$/, '') + '_' + file.createdAt.toISOString().split('T')[0] + '.log';
+					renameSync(file.name, historyName);
+					file.stream = createWriteStream(file.name);
+					file.createdAt = new Date();
+				}
+			}
+		}
+	}
+
+	protected log(type: Levels, name: string, json?: object) {
+		this.selectFile();
 		if (!(json instanceof Object)) json = { raw: json };
 		const id = words[Math.floor(words.length * Math.random())];
 		const parentId = '';
-		const str = JSON.stringify([id, parentId, new Date(), type, name, json], (_key, value) => {
-			if (value instanceof Error) {
-				const stack = cleanStackTrace(value.stack);
-				if (value instanceof BaseException) {
-					return { name: value.name, stack, json: value.json };
-				}
-				return { message: value.message, stack };
-			}
-			if (value instanceof IncomingMessage) {
-				return { __type: 'responseObject' };
-			}
-			if (value instanceof ClientRequest) {
-				return { __type: 'requestObject' };
-			}
-			return value;
-		});
-		this.file.write(str);
-		console.log(str);
+		const str = JSON.stringify([id, parentId, new Date(), type, name, json], jsonReplacer) + '\n';
+		for (const file of this.files) {
+			if (levels[type] <= file.level) file.stream.write(str);
+		}
 	}
 
 	info(name: string, json?: object) {
@@ -57,9 +99,6 @@ export class Logger {
 	}
 	trace(name: string, json?: object) {
 		return this.log('trace', name, json);
-	}
-	args(args?: object) {
-		return this.log('trace', 'args', args);
 	}
 	error(name: string | Error, json?: object) {
 		if (name instanceof Error) {
@@ -87,7 +126,60 @@ export class Logger {
 	}
 }
 
-export const logger = new Logger(getEnv('LOG_FILE'));
+function jsonReplacer(_key: string, value: unknown) {
+	if (value instanceof Error) {
+		const stack = cleanStackTrace(value.stack);
+		if (value instanceof BaseException) {
+			return { name: value.name, stack, json: value.json };
+		}
+		return { ...value, error: value.message, stack };
+	}
+	if (value instanceof IncomingMessage) {
+		return { __type: 'responseObject' };
+	}
+	if (value instanceof Promise) {
+		return { __type: 'promise' };
+	}
+	if (value instanceof Buffer) {
+		return { __type: 'buffer' };
+	}
+	if (value instanceof ClientRequest) {
+		return { __type: 'requestObject' };
+	}
+	return value;
+}
+
+const levels = {
+	error: 0,
+	warn: 1,
+	external: 2,
+	info: 3,
+	clientError: 4,
+	trace: 5,
+};
+
+const packageJsonFile = findUp.sync('package.json', { cwd: require.main!.filename });
+if (!packageJsonFile) throw new Exception('package.json is not found');
+const projectDir = dirname(packageJsonFile);
+
+const env = process.env.NODE_ENV || 'production';
+let settings: LoggerSettings | undefined;
+for (const e of ['', '.local', env, env + '.local']) {
+	try {
+		settings = JSON.parse(readFileSync(projectDir + '/logger' + e + '.json', 'utf8'));
+	} catch (e) {}
+}
+if (!settings) throw new Exception('Logger settings file is not found', { projectDir });
+for (const stream of settings.streams) {
+	if (!stream.file && !stream.stdout) {
+		throw new Exception('Logger settings.streams: file or stdout should be specified', { stream });
+	}
+	if (stream.rotate && stream.rotate !== 'daily') {
+		throw new Exception('Logger settings.streams: only daily rotate supports', { stream });
+	}
+}
+
+export const logger = new Logger(settings);
 
 const extractPathRegex = /\s+at.*?\((.*?)\)/;
 const pathRegex = /^internal|(.*?\/node_modules\/(ts-node)\/)/;
