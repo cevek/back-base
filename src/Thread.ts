@@ -47,9 +47,8 @@ function exit<T>(parentId: string | undefined, val?: T) {
 	setDataToCurrentThread(callSymbol, parentId);
 	return val;
 }
-async function foo(x: number) {
+async function foo(_x: number) {
 	const parentId = enter('foo');
-	logger.args({ x });
 	1 + 2;
 	if (Math) {
 		throw 1;

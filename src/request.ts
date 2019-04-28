@@ -8,18 +8,33 @@ export interface RequestOptions extends request.CoreOptions {
 }
 
 type Response = {
-	res: request.Response;
+	res?: request.Response;
 	statusCode: number;
 	body: Buffer | string | object;
-	error: Error | string | undefined;
+};
+type ResponseError = {
+	statusCode: number;
+	body: Buffer | string | object;
+	error?: Error;
+	url: string;
+	options: object;
 };
 
 function requestAsync(url: string, options: RequestOptions = {}) {
 	return new Promise<Response>((resolve, reject) =>
-		request(url, options, (err: Error | string | undefined, res, body: Buffer | undefined) => {
-			const data = { res, statusCode: res.statusCode, body: body || '', error: err };
-			if (err) return reject(new Exception('Request error', data));
-			return resolve(data);
+		request(url, options, (err: Error, res: request.Response | undefined, body: Buffer | undefined) => {
+			const statusCode = res ? res.statusCode : 0;
+			if (err)
+				return reject(
+					new Exception<ResponseError>('Request error', {
+						statusCode,
+						body: body || '',
+						error: err,
+						url,
+						options,
+					}),
+				);
+			return resolve({ res, statusCode, body: body || '' });
 		}),
 	);
 }
@@ -27,22 +42,33 @@ export async function requestRaw(url: string, options: RequestOptions = {}) {
 	const { attemptsCount = 5, attemptDelay = 1000 } = options;
 	for (let i = 1; i <= attemptsCount; i++) {
 		logger.trace('Request start', { url, options, attempt: i === 1 ? undefined : i });
-		const res = await requestAsync(url, options);
-		const timeoutError =
-			res.error instanceof Error && (res.error.message === 'ETIMEDOUT' || res.error.message === 'ESOCKETTIMEDOUT');
-		if (timeoutError || res.statusCode >= 500) {
-			if (i < attemptsCount) {
-				await sleep(attemptDelay);
-			} else {
-				throw new ExternalException(timeoutError ? 'Request timeout' : '500', res);
+		let res;
+		try {
+			res = await requestAsync(url, options);
+		} catch (error) {
+			if (error instanceof Exception) {
+				const jsonErr = error.json as ResponseError;
+				const timeoutError =
+					jsonErr.error instanceof Error &&
+					(jsonErr.error.message === 'ETIMEDOUT' || jsonErr.error.message === 'ESOCKETTIMEDOUT');
+				if (timeoutError || error.json.statusCode >= 500) {
+					if (i < attemptsCount) {
+						await sleep(attemptDelay);
+						continue;
+					} else {
+						throw new ExternalException<ResponseError>(timeoutError ? 'Request timeout' : '500', error.json);
+					}
+				}
 			}
+			throw error;
 		}
-		if (res.statusCode >= 400) throw new Exception('400', res);
+		const errJson: ResponseError = { body: res.body, options, url, statusCode: res.statusCode };
+		if (res.statusCode >= 400) throw new Exception<ResponseError>('400', errJson);
 		if (res.statusCode >= 200 && res.statusCode < 300) {
 			logger.trace('Request response', res);
 			return res;
 		}
-		throw new Exception('Request error', res);
+		throw new Exception<ResponseError>('Request error', errJson);
 	}
 	throw never();
 }
@@ -63,7 +89,12 @@ export async function requestJSON<T>(url: string, options?: RequestOptions): Pro
 		throw e;
 	}
 	try {
-		const json = JSON.parse(d.body.toString() || '{}') as T;
+		let json;
+		if (d.body instanceof Object) {
+			json = (d.body as unknown) as T;
+		} else {
+			json = JSON.parse(d.body.toString() || '{}') as T;
+		}
 		return { ...d, data: json };
 	} catch {
 		throw new Exception(`Response is not json`, d);

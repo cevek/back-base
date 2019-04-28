@@ -58,3 +58,8 @@ export function getEnv(name: string) {
 export function getEnvNullable(name: string) {
 	return process.env[name];
 }
+
+export function nonNull<T>(value: T | undefined): T {
+	if (value === undefined) throw new Exception('Value cannot be undefined', { value });
+	return value;
+}

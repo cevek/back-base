@@ -527,7 +527,7 @@ export async function readMigrationsFromDir(dir: string) {
 	const migrations: Migration[] = [];
 	for (let i = 0; i < files.length; i++) {
 		const file = files[i];
-		const m = file.match(/^\d{4}-\d{2}-\d{2} \d{2}-\d{2} (.*?)\.sql$/);
+		const m = file.match(/^\d+ (.*?)\.sql$/);
 		if (!m) throw new Exception(`Incorrect migration filename`, { file });
 		const migrationName = m[1];
 		if (migrations.find(m => m.name === migrationName))

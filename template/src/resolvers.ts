@@ -1,4 +1,4 @@
-import {QueryParameters, RootResolver, removeItemOrNever, Return, service, ClientException} from 'backend-base';
+import {QueryParameters, RootResolver, removeItemOrNever, Return, service, ClientException, fromPromise} from 'backend-base';
 import {TodoID, TodoListID, User} from './DBSchema';
 import {Errors} from './Errors';
 import {Account, Mutation, Query, Todo, TodoList} from './GraphQLSchema';
@@ -82,7 +82,7 @@ async function getAccount(_: {}, ctx: ContextWithUser): Return<Account> {
 }
 
 async function getTodoLists(_: {}, ctx: ContextWithUser) {
-    return ctx.session.user.todoLists.map(id => getTodoList(id, ctx));
+    return ctx.session.user.todoLists.map(id => getTodoList(id, ctx)).map(fromPromise);
 }
 
 async function createTodoList(args: Params['createTodoList'], ctx: ContextWithUser) {
@@ -159,6 +159,6 @@ async function getTodoList(id: TodoListID, ctx: ContextWithUser): Return<TodoLis
     return {
         id: todoList.id,
         title: todoList.title,
-        todos: todoList.todosIds.map(todoId => getTodo(todoId)),
+        todos: todoList.todosIds.map(todoId => getTodo(todoId)).map(fromPromise),
     };
 }

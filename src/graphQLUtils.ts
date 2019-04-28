@@ -6,14 +6,19 @@ export type RootResolver<T, Context> = {
 
 export type QueryParameters<Q> = { [P in keyof Q]: Q[P] extends (args: infer Args) => unknown ? Args : never };
 
-type PromisifyObj<T> = { [P in keyof T]: PromisifyValue<T[P]> };
-type Obj<T> = PromisifyObj<T> | Promise<PromisifyObj<T>> | (() => PromisifyObj<T>) | (() => Promise<PromisifyObj<T>>);
-type PromisifyPrimitive<T> = T | Promise<T> | (() => T) | (() => Promise<T>);
-type PromisifyValue<T> = [T] extends [object]
-	? (T extends Date ? PromisifyPrimitive<Date> : Obj<T>)
-	: PromisifyPrimitive<T>;
+// type PromisifyObj<T> = { [P in keyof T]: PromisifyValue<T[P]> };
+// type Obj<T> = PromisifyObj<T> | Promise<PromisifyObj<T>> | (() => PromisifyObj<T>) | (() => Promise<PromisifyObj<T>>);
+// type PromisifyPrimitive<T> = T | Promise<T> | (() => T) | (() => Promise<T>);
+// type PromisifyValue<T> = [T] extends [object]
+// 	? (T extends Date ? PromisifyPrimitive<Date> : Obj<T>)
+// 	: PromisifyPrimitive<T>;
 
-export type Return<T> = Promise<[T] extends [object] ? ([T] extends [Date] ? Date : PromisifyObj<T>) : T>;
+// export type Return<T> = Promise<[T] extends [object] ? ([T] extends [Date] ? Date : PromisifyObj<T>) : T>;
+export type Return<T> = Promise<T>;
+
+export function fromPromise<T>(val: Promise<T> | (() => Promise<T>) | T) {
+	return (val as unknown) as T extends Array<Promise<infer V>> ? V[] : T extends Array<() => Promise<infer V>> ? V : T;
+}
 
 const customTypeMap = new Map<string, GraphQLScalarType>();
 

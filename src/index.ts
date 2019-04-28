@@ -11,7 +11,7 @@ import 'deps-check';
 import Express from 'express';
 import graphqlHTTP from 'express-graphql';
 import session, { SessionOptions } from 'express-session';
-import { GraphQLError } from 'graphql';
+import { GraphQLError, validateSchema } from 'graphql';
 import { dirname } from 'path';
 import { createSchema } from 'ts2graphql';
 import { dbInit, DBOptions } from './dbInit';
@@ -26,6 +26,7 @@ import { ClientException, logger, Exception } from './logger';
 import { Pool } from 'pg';
 import findUp from 'find-up';
 import { sleep } from './utils';
+import * as diskusage from 'diskusage';
 
 export * from './di';
 export * from './graphQLUtils';
@@ -82,9 +83,6 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 	let dbPool: Pool | undefined;
 	try {
 		logger.info('ENV', { ENV });
-		const packageJsonFile = await findUp('package.json', { cwd: require.main!.filename });
-		if (!packageJsonFile) throw new Exception('package.json is not found');
-		const projectDir = dirname(packageJsonFile);
 
 		if (options.db) {
 			const dbRes = await dbInit<DBSchema>(projectDir, options.db);
@@ -132,13 +130,14 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 			customScalarFactory: type =>
 				type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
 		});
+		validateSchema(schema);
 
 		function handleError(error: Error) {
-			debugger;
+			logger.error(error);
 			if (error instanceof ClientException) {
 				return { error: error.name, status: 400 };
 			}
-			logger.error(error);
+			debugger;
 			/* istanbul ignore next */
 			return { error: options.errors.unknown, status: 500 };
 		}
@@ -154,18 +153,28 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 		);
 		express.post(
 			'/api/graphql',
+			(_req, res, next) => {
+				const sendJson = res.json.bind(res);
+				res.json = (json: { errors?: unknown[] }) => {
+					if (json && json.errors) {
+						json.errors = (json.errors as { originalError?: Error }[]).map(graphqlError => {
+							const originalError = graphqlError.originalError || (graphqlError as Error);
+							if (originalError instanceof GraphQLError) {
+								return originalError;
+							}
+							const { error, status } = handleError(originalError);
+							res.statusCode = status;
+							return error;
+						});
+					}
+					return sendJson(json);
+				};
+				next();
+			},
 			graphqlHTTP({
 				schema: schema,
 				rootValue: options.graphql.resolver,
-				...{
-					customFormatErrorFn(err: GraphQLError) {
-						const error = err.originalError || err;
-						if (error instanceof GraphQLError) {
-							return error;
-						}
-						return handleError(error).error;
-					},
-				},
+				...{ customFormatErrorFn: (err: Error) => err },
 			}),
 		);
 
@@ -202,7 +211,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 			res.status(status);
 			res.send({ status: 'error', error: error });
 		});
-	
+
 		return result;
 	} catch (err) {
 		if (dbPool) {
@@ -211,6 +220,10 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 		throw err;
 	}
 }
+
+const packageJsonFile = findUp.sync('package.json', { cwd: require.main!.filename });
+if (!packageJsonFile) throw new Exception('package.json is not found');
+const projectDir = dirname(packageJsonFile);
 
 let activeThreadsCount = 0;
 export function asyncThread(fn: (req: Express.Request, res: Express.Response) => Promise<unknown>): Express.Handler {
@@ -242,6 +255,38 @@ export function asyncThread(fn: (req: Express.Request, res: Express.Response) =>
 		process.exit();
 	});
 });
+
+function round(val: number, round: number) {
+	return Math.round(val / round) * round;
+}
+let prevCpuUsage = process.cpuUsage();
+const SYSTEM_HEALTH_INTERVAL = 600_000;
+setInterval(() => {
+	const mem = process.memoryUsage();
+	const cpu = process.cpuUsage();
+	const cpuSum = cpu.system - prevCpuUsage.system + (cpu.user - prevCpuUsage.user);
+	const cpuUsage = round((cpuSum / (SYSTEM_HEALTH_INTERVAL * 1000)) * 100, 1) + '%';
+	const headUsage = round(mem.heapUsed / 1024 ** 2, 50) + ' MB';
+	const rss = round(mem.rss / 1024 ** 2, 50) + ' MB';
+	logger.info('System health', { headUsage, rss, cpuUsage });
+	prevCpuUsage = cpu;
+}, SYSTEM_HEALTH_INTERVAL).unref();
+
+const MIN_AVAILABLE_DISK_SPACE = 1024 ** 3;
+
+function checkFreeSpace() {
+	diskusage
+		.check('/')
+		.then(res => {
+			if (res.available < MIN_AVAILABLE_DISK_SPACE) {
+				const availableSpace = round(res.available / 1024 ** 2, 50) + ' MB';
+				logger.warn('Low available disk space', { availableSpace });
+			}
+		})
+		.catch(err => logger.error(err));
+	setTimeout(checkFreeSpace, 600_000).unref();
+}
+checkFreeSpace();
 
 process.on('unhandledRejection', reason => logger.warn('Unhandled Promise rejection', { reason }));
 process.on('uncaughtException', err => logger.error('UncaughtException', err));
