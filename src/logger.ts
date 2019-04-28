@@ -3,7 +3,8 @@ import { createWriteStream, fstatSync, openSync, renameSync, readFileSync } from
 import { dirname } from 'path';
 import words from './words';
 import { IncomingMessage, ClientRequest } from 'http';
-import findUp = require('find-up');
+import colors from 'colors';
+import findUp from 'find-up';
 
 export class BaseException<T> extends Error {
 	kind: string;
@@ -25,6 +26,7 @@ export class Logger {
 	protected files: {
 		level: number;
 		name: string;
+		stdout: boolean;
 		createdAt: Date;
 		stream: NodeJS.WritableStream;
 		dailyRotate: boolean;
@@ -43,6 +45,7 @@ export class Logger {
 					name: stream.file,
 					stream: createWriteStream(stream.file),
 					createdAt,
+					stdout: false,
 					dailyRotate: stream.rotate === 'daily',
 				};
 				this.files.push(file);
@@ -50,6 +53,7 @@ export class Logger {
 			if (stream.stdout) {
 				this.files.push({
 					level,
+					stdout: true,
 					name: 'stdout',
 					stream: process.stdout,
 					createdAt: new Date(),
@@ -84,7 +88,31 @@ export class Logger {
 		const parentId = '';
 		const str = JSON.stringify([id, parentId, new Date(), type, name, json], jsonReplacer) + '\n';
 		for (const file of this.files) {
-			if (levels[type] <= file.level) file.stream.write(str);
+			if (levels[type] <= file.level) {
+				if (file.stdout) {
+					let fn = colors.black;
+					if (type === 'error') fn = colors.red;
+					if (type === 'info') fn = colors.blue;
+					if (type === 'warn') fn = colors.yellow;
+					if (type === 'trace') fn = colors.gray;
+					if (type === 'external') fn = colors.magenta;
+					if (type === 'clientError') fn = colors.green;
+					const dt = new Date();
+					const dtS =
+						('0' + dt.getHours()).substr(-2) +
+						':' +
+						('0' + dt.getMinutes()).substr(-2) +
+						':' +
+						('0' + dt.getSeconds()).substr(-2);
+					file.stream.write(
+						colors.gray(dtS + ' ' + type + ' ') +
+							fn(name + ' ') +
+							colors.gray(JSON.stringify(json, jsonReplacer, 2) + '\n'),
+					);
+				} else {
+					file.stream.write(str);
+				}
+			}
 		}
 	}
 
