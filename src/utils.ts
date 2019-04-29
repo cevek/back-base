@@ -1,6 +1,8 @@
 import { createVerify } from 'crypto';
 import { Exception } from './logger';
 
+export type DeepPartial<T> = { [P in keyof T]?: DeepPartial<T[P]> };
+
 /* istanbul ignore next */
 export function lastItem<T>(arr: ReadonlyArray<T>): T {
 	return arr.length === 0 ? undefined! : arr[arr.length - 1];
@@ -63,3 +65,5 @@ export function nonNull<T>(value: T | undefined): T {
 	if (value === undefined) throw new Exception('Value cannot be undefined', { value });
 	return value;
 }
+
+

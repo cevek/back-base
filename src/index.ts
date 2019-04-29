@@ -19,7 +19,7 @@ import { graphQLBigintTypeFactory } from './graphQLUtils';
 import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
 import * as bodyparser from 'body-parser';
 import serveStatic from 'serve-static';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import https from 'https';
 import http from 'http';
 import { ClientException, logger, Exception } from './logger';
@@ -225,6 +225,8 @@ const packageJsonFile = findUp.sync('package.json', { cwd: require.main!.filenam
 if (!packageJsonFile) throw new Exception('package.json is not found');
 const projectDir = dirname(packageJsonFile);
 
+const initFile = projectDir + '/.status';
+
 let activeThreadsCount = 0;
 export function asyncThread(fn: (req: Express.Request, res: Express.Response) => Promise<unknown>): Express.Handler {
 	return (req, res, next) => {
@@ -252,6 +254,7 @@ export function asyncThread(fn: (req: Express.Request, res: Express.Response) =>
 		} else {
 			logger.warn('Force Exit', { activeThreadsCount });
 		}
+		writeFileSync(initFile, 'ok');
 		process.exit();
 	});
 });
@@ -287,6 +290,11 @@ function checkFreeSpace() {
 	setTimeout(checkFreeSpace, 600_000).unref();
 }
 checkFreeSpace();
+
+if (existsSync(initFile) && readFileSync(initFile, 'utf8') !== 'ok') {
+	logger.warn('Last program was killed');
+}
+writeFileSync(initFile, '');
 
 process.on('unhandledRejection', reason => logger.warn('Unhandled Promise rejection', { reason }));
 process.on('uncaughtException', err => logger.error('UncaughtException', err));
