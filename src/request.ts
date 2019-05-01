@@ -38,10 +38,10 @@ function requestAsync(url: string, options: RequestOptions = {}) {
 		}),
 	);
 }
-export async function requestRaw(url: string, options: RequestOptions = {}) {
+async function _requestRaw(url: string, options: RequestOptions) {
 	const { attemptsCount = 5, attemptDelay = 1000 } = options;
 	for (let i = 1; i <= attemptsCount; i++) {
-		logger.trace('Request start', { url, options, attempt: i === 1 ? undefined : i });
+		logger.trace('Request', { url, options, attempt: i === 1 ? undefined : i });
 		let res;
 		try {
 			res = await requestAsync(url, options);
@@ -65,18 +65,22 @@ export async function requestRaw(url: string, options: RequestOptions = {}) {
 		const errJson: ResponseError = { body: res.body, options, url, statusCode: res.statusCode };
 		if (res.statusCode >= 400) throw new Exception<ResponseError>('400', errJson);
 		if (res.statusCode >= 200 && res.statusCode < 300) {
-			logger.trace('Request response', res);
 			return res;
 		}
 		throw new Exception<ResponseError>('Request error', errJson);
 	}
 	throw never();
 }
+export async function requestRaw(url: string, options: RequestOptions = {}) {
+	const res = await _requestRaw(url, options);
+	logger.trace('RequestResponse', { statusCode: res.statusCode, body: res.body });
+	return res;
+}
 
 export async function requestJSON<T>(url: string, options?: RequestOptions): Promise<{ data: T } & Response> {
 	let d;
 	try {
-		d = await requestRaw(url, { headers: { 'content-type': 'application/json' }, ...options });
+		d = await _requestRaw(url, { headers: { 'content-type': 'application/json' }, ...options });
 	} catch (e) {
 		if (e instanceof BaseException) {
 			const err = e.json as Response;
@@ -95,6 +99,7 @@ export async function requestJSON<T>(url: string, options?: RequestOptions): Pro
 		} else {
 			json = JSON.parse(d.body.toString() || '{}') as T;
 		}
+		logger.trace('RequestJSONResponse', { statusCode: d.statusCode, body: json });
 		return { ...d, data: json };
 	} catch {
 		throw new Exception(`Response is not json`, d);

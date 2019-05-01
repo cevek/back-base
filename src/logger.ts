@@ -2,7 +2,6 @@ import mkdirp from 'mkdirp';
 import { createWriteStream, fstatSync, openSync, renameSync } from 'fs';
 import { dirname } from 'path';
 import words from './words';
-import { IncomingMessage, ClientRequest } from 'http';
 import colors from 'colors';
 import findUp from 'find-up';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
@@ -54,6 +53,7 @@ export class Logger {
 	}
 
 	protected log(type: Levels, name: string, json?: object) {
+		if (json === undefined) json = {};
 		if (!(json instanceof Object)) json = { raw: json };
 		const id = words[Math.floor(words.length * Math.random())];
 		const parentId = '';
@@ -156,7 +156,7 @@ class FileStream extends LoggerStream {
 		try {
 			createdAt = fstatSync(openSync(options.file, 'r')).ctime;
 		} catch (e) {}
-		this.stream = createWriteStream(options.file);
+		this.stream = createWriteStream(options.file, { flags: 'a' });
 		this.createdAt = createdAt;
 		this.rotate = options.rotate || 'never';
 		this.fileName = options.file;
@@ -215,17 +215,19 @@ function jsonReplacer(_key: string, value: unknown) {
 		}
 		return { ...value, error: value.message, stack };
 	}
-	if (value instanceof IncomingMessage) {
-		return { __type: 'responseObject' };
-	}
-	if (value instanceof Promise) {
-		return { __type: 'promise' };
-	}
-	if (value instanceof Buffer) {
-		return { __type: 'buffer' };
-	}
-	if (value instanceof ClientRequest) {
-		return { __type: 'requestObject' };
+	if (value instanceof Object) {
+		if ('request' in value && 'headers' in value && 'body' in value && 'statusCode' in value) {
+			return { __type: 'responseObject' };
+		}
+		if ('method' in value && 'uri' in value && 'headers' in value) {
+			return { __type: 'requestObject' };
+		}
+		if (value instanceof Promise) {
+			return { __type: 'promise' };
+		}
+		if (value instanceof Buffer) {
+			return { __type: 'buffer' };
+		}
 	}
 	return value;
 }
@@ -242,7 +244,7 @@ const levels = {
 const packageJsonFile = findUp.sync('package.json', { cwd: require.main!.filename });
 if (!packageJsonFile) throw new Exception('package.json is not found');
 const projectDir = dirname(packageJsonFile);
-export const logger = new Logger(require(projectDir + '/logger.ts').default);
+export const logger = new Logger(require(projectDir + '/logger.config.ts').default);
 
 // export const logger = new Logger(settings);
 

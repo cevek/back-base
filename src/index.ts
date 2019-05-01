@@ -82,6 +82,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 	let db: BaseDB<DBSchema> | undefined;
 	let dbPool: Pool | undefined;
 	try {
+		logger.info('------------------------ START PROGRAM ----------------------', {pid: process.pid});
 		logger.info('ENV', { ENV });
 
 		if (options.db) {
