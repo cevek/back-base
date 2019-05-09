@@ -82,7 +82,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 	let db: BaseDB<DBSchema> | undefined;
 	let dbPool: Pool | undefined;
 	try {
-		logger.info('------------------------ START PROGRAM ----------------------', {pid: process.pid});
+		logger.info('------------------------ START PROGRAM ----------------------', { pid: process.pid });
 		logger.info('ENV', { ENV });
 
 		if (options.db) {
@@ -131,7 +131,10 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 			customScalarFactory: type =>
 				type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
 		});
-		validateSchema(schema);
+		// console.log(printSchema(schema));
+		validateSchema(schema).forEach(err => {
+			throw err;
+		});
 
 		function handleError(error: Error) {
 			logger.error(error);
