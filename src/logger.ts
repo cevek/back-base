@@ -34,25 +34,30 @@ type LoggerStreamConfig =
 export interface LoggerSettings {
 	streams: LoggerStreamConfig[];
 }
+
 export class Logger {
 	protected streams: LoggerStream[] = [];
-	constructor(protected settings: LoggerSettings) {
-		if (settings.streams.length === 0) throw new Exception('Empty logger streams', { settings });
+	constructor(settings: LoggerSettings) {
+		this.setSettings(settings);
+	}
+
+	protected setSettings(settings: LoggerSettings) {
 		for (const streamConfig of settings.streams) {
 			const level = levels[streamConfig.level];
 			if (streamConfig.type === 'file') {
-				this.streams.push(new FileStream(level, streamConfig));
+				logger.streams.push(new FileStream(level, streamConfig));
 			}
 			if (streamConfig.type === 'stdout') {
-				this.streams.push(new StdoutStream(level, streamConfig));
+				logger.streams.push(new StdoutStream(level, streamConfig));
 			}
 			if (streamConfig.type === 'email') {
-				this.streams.push(new EmailStream(level, streamConfig));
+				logger.streams.push(new EmailStream(level, streamConfig));
 			}
 		}
 	}
 
 	protected log(type: Levels, name: string, json?: object) {
+		if (this.streams.length === 0) throw new Exception('Empty logger streams');
 		if (json === undefined) json = {};
 		if (!(json instanceof Object)) json = { raw: json };
 		const id = words[Math.floor(words.length * Math.random())];
@@ -103,6 +108,10 @@ export class Logger {
 	}
 }
 
+class LoggerOpened extends Logger {
+	setSettings(_settings: LoggerSettings) {}
+}
+
 abstract class LoggerStream {
 	constructor(public level: number) {}
 	abstract write(id: string, parentId: string, date: Date, type: Levels, name: string, json: object): void;
@@ -122,6 +131,7 @@ class EmailStream extends LoggerStream {
 	}
 	transport = nodemailer.createTransport(this.options.options);
 	lastSendedAt = new Date(0);
+	previousLogsCount = 0;
 
 	sendMail(subject: string, text: string) {
 		this.transport
@@ -135,12 +145,18 @@ class EmailStream extends LoggerStream {
 	}
 
 	write(_id: string, _parentId: string, date: Date, type: Levels, name: string, json: object): void {
-		if (Date.now() - this.lastSendedAt.getTime() < 3_600_000) return;
+		if (Date.now() - this.lastSendedAt.getTime() < 3_600_000) {
+			this.previousLogsCount++;
+			return;
+		}
 		this.sendMail(
 			this.options.subject.error,
-			`${date.toISOString()} ${type} ${name} ${JSON.stringify(json, jsonReplacer, 2)}`,
+			`${
+				this.previousLogsCount > 0 ? `Prev errors count: ${this.previousLogsCount}\n` : ''
+			}${date.toISOString()} ${type} ${name} ${JSON.stringify(json, jsonReplacer, 2)}`,
 		);
 		this.lastSendedAt = new Date();
+		this.previousLogsCount = 0;
 	}
 }
 class FileStream extends LoggerStream {
@@ -243,14 +259,11 @@ const levels = {
 
 const packageJsonFile = findUp.sync('package.json', { cwd: require.main!.filename });
 if (!packageJsonFile) throw new Exception('package.json is not found');
-const projectDir = dirname(packageJsonFile);
-export const logger = new Logger(require(projectDir + '/logger.config.ts').default);
-
-// export const logger = new Logger(settings);
+export const logger = new Logger({ streams: [] });
 
 const extractPathRegex = /\s+at.*?\((.*?)\)/;
 const pathRegex = /^internal|(.*?\/node_modules\/(ts-node)\/)/;
-export function cleanStackTrace(stack: string | undefined) {
+function cleanStackTrace(stack: string | undefined) {
 	if (!stack) return;
 	return stack
 		.replace(/\\/g, '/')
@@ -263,4 +276,8 @@ export function cleanStackTrace(stack: string | undefined) {
 		})
 		.filter(line => line.trim() !== '')
 		.join('\n');
+}
+
+export function setLoggerSettings(settings: LoggerSettings) {
+	(logger as LoggerOpened).setSettings(settings);
 }

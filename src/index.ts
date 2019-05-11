@@ -241,10 +241,19 @@ export function asyncThread(fn: (req: Express.Request, res: Express.Response) =>
 	};
 }
 
+let lastExitRequestTime = 0;
 [`SIGINT`, `SIGUSR1`, `SIGUSR2`, `SIGTERM`].forEach(eventType => {
 	process.on(eventType as 'exit', async code => {
-		EXITING = true;
+		// console.log('exit', {now: Date.now(), lastExitRequestTime, EXITING});
+		if (EXITING && Date.now() - lastExitRequestTime < 10) return;
+		if (EXITING) {
+			logger.warn('Force Exit Double SIGINT', { activeThreadsCount });
+			writeFileSync(initFile, 'ok');
+			process.exit();
+		}
+		lastExitRequestTime = Date.now();
 		logger.info('Exit requested', { eventType, code, activeThreadsCount });
+		EXITING = true;
 		let softExit = false;
 		for (let i = 0; i < 300; i++) {
 			if (activeThreadsCount === 0) {
@@ -296,7 +305,9 @@ function checkFreeSpace() {
 checkFreeSpace();
 
 if (existsSync(initFile) && readFileSync(initFile, 'utf8') !== 'ok') {
-	logger.warn('Last program was killed');
+	setTimeout(() => {
+		logger.warn('Last program was killed');
+	});
 }
 writeFileSync(initFile, '');
 
