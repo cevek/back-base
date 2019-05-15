@@ -48,9 +48,8 @@ async function _requestRaw(url: string, options: RequestOptions) {
 		} catch (error) {
 			if (error instanceof Exception) {
 				const jsonErr = error.json as ResponseError;
-				const timeoutError =
-					jsonErr.error instanceof Error &&
-					(jsonErr.error.message === 'ETIMEDOUT' || jsonErr.error.message === 'ESOCKETTIMEDOUT');
+				const nativeErr = jsonErr.error as NodeJS.ErrnoException;
+				const timeoutError = nativeErr && (nativeErr.code === 'ETIMEDOUT' || nativeErr.code === 'ESOCKETTIMEDOUT');
 				if (timeoutError || error.json.statusCode >= 500) {
 					if (i < attemptsCount) {
 						await sleep(attemptDelay);
