@@ -1,10 +1,5 @@
-if (+process.versions.node.replace(/\.\d+$/, '') < 11)
-	throw new Error(`Required version of node: >=11, current: ${process.versions.node}`);
-
-import dotenv from 'dotenv';
-export const ENV = process.env.NODE_ENV || 'development';
-const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
-envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
+if (+process.versions.node.replace(/\.\d+$/, '') < 12)
+	throw new Error(`Required version of node: >=12, current: ${process.versions.node}`);
 
 import cors from 'cors';
 import 'deps-check';
@@ -26,7 +21,7 @@ import { ClientException, logger, Exception } from './logger';
 import { Pool } from 'pg';
 import findUp from 'find-up';
 import { sleep } from './utils';
-import * as diskusage from 'diskusage';
+// import * as diskusage from 'diskusage';
 
 export * from './di';
 export * from './graphQLUtils';
@@ -39,6 +34,7 @@ export * from './assert';
 export * from './logger';
 export const bodyParser = bodyparser;
 
+export const ENV = process.env.NODE_ENV || 'development';
 export const PRODUCTION = ENV === 'production';
 
 interface Options {
@@ -82,7 +78,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 	let db: BaseDB<DBSchema> | undefined;
 	let dbPool: Pool | undefined;
 	try {
-		logger.info('------------------------ START PROGRAM ----------------------', {pid: process.pid});
+		logger.info('------------------------ START PROGRAM ----------------------', { pid: process.pid });
 		logger.info('ENV', { ENV });
 
 		if (options.db) {
@@ -131,7 +127,10 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 			customScalarFactory: type =>
 				type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
 		});
-		validateSchema(schema);
+		// console.log(printSchema(schema));
+		validateSchema(schema).forEach(err => {
+			throw err;
+		});
 
 		function handleError(error: Error) {
 			logger.error(error);
@@ -238,10 +237,19 @@ export function asyncThread(fn: (req: Express.Request, res: Express.Response) =>
 	};
 }
 
+let lastExitRequestTime = 0;
 [`SIGINT`, `SIGUSR1`, `SIGUSR2`, `SIGTERM`].forEach(eventType => {
 	process.on(eventType as 'exit', async code => {
-		EXITING = true;
+		// console.log('exit', {now: Date.now(), lastExitRequestTime, EXITING});
+		if (EXITING && Date.now() - lastExitRequestTime < 10) return;
+		if (EXITING) {
+			logger.warn('Force Exit Double SIGINT', { activeThreadsCount });
+			writeFileSync(initFile, 'ok');
+			process.exit();
+		}
+		lastExitRequestTime = Date.now();
 		logger.info('Exit requested', { eventType, code, activeThreadsCount });
+		EXITING = true;
 		let softExit = false;
 		for (let i = 0; i < 300; i++) {
 			if (activeThreadsCount === 0) {
@@ -276,24 +284,26 @@ setInterval(() => {
 	prevCpuUsage = cpu;
 }, SYSTEM_HEALTH_INTERVAL).unref();
 
-const MIN_AVAILABLE_DISK_SPACE = 1024 ** 3;
+// const MIN_AVAILABLE_DISK_SPACE = 1024 ** 3;
 
 function checkFreeSpace() {
-	diskusage
-		.check('/')
-		.then(res => {
-			if (res.available < MIN_AVAILABLE_DISK_SPACE) {
-				const availableSpace = round(res.available / 1024 ** 2, 50) + ' MB';
-				logger.warn('Low available disk space', { availableSpace });
-			}
-		})
-		.catch(err => logger.error(err));
-	setTimeout(checkFreeSpace, 600_000).unref();
+	// diskusage
+	// 	.check('/')
+	// 	.then(res => {
+	// 		if (res.available < MIN_AVAILABLE_DISK_SPACE) {
+	// 			const availableSpace = round(res.available / 1024 ** 2, 50) + ' MB';
+	// 			logger.warn('Low available disk space', { availableSpace });
+	// 		}
+	// 	})
+	// 	.catch(err => logger.error(err));
+	// setTimeout(checkFreeSpace, 600_000).unref();
 }
 checkFreeSpace();
 
 if (existsSync(initFile) && readFileSync(initFile, 'utf8') !== 'ok') {
-	logger.warn('Last program was killed');
+	setTimeout(() => {
+		logger.warn('Last program was killed');
+	});
 }
 writeFileSync(initFile, '');
 

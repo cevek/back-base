@@ -48,9 +48,8 @@ async function _requestRaw(url: string, options: RequestOptions) {
 		} catch (error) {
 			if (error instanceof Exception) {
 				const jsonErr = error.json as ResponseError;
-				const timeoutError =
-					jsonErr.error instanceof Error &&
-					(jsonErr.error.message === 'ETIMEDOUT' || jsonErr.error.message === 'ESOCKETTIMEDOUT');
+				const nativeErr = jsonErr.error as NodeJS.ErrnoException;
+				const timeoutError = nativeErr && (nativeErr.code === 'ETIMEDOUT' || nativeErr.code === 'ESOCKETTIMEDOUT');
 				if (timeoutError || error.json.statusCode >= 500) {
 					if (i < attemptsCount) {
 						await sleep(attemptDelay);
@@ -63,6 +62,7 @@ async function _requestRaw(url: string, options: RequestOptions) {
 			throw error;
 		}
 		const errJson: ResponseError = { body: res.body, options, url, statusCode: res.statusCode };
+		if (res.statusCode >= 500) throw new ExternalException<ResponseError>('500', errJson);
 		if (res.statusCode >= 400) throw new Exception<ResponseError>('400', errJson);
 		if (res.statusCode >= 200 && res.statusCode < 300) {
 			return res;

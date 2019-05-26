@@ -61,8 +61,8 @@ export function getEnvNullable(name: string) {
 	return process.env[name];
 }
 
-export function nonNull<T>(value: T | undefined): T {
-	if (value === undefined) throw new Exception('Value cannot be undefined', { value });
+export function nonNull<T>(value: T | undefined | null): T {
+	if (value === undefined || value === null) throw new Exception('Value cannot be undefined or null', { value });
 	return value;
 }
 

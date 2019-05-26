@@ -21,9 +21,9 @@ type Collections<Schema> = {
 };
 
 export type QueryResult<T, Keys extends keyof T, CF extends string> = ([Keys] extends [never] ? T : Pick<T, Keys>) &
-	{ [P in CF]: string | undefined };
+	{ [P in CF]: string | null };
 type DBValue = DBValueBase | DBValueBase[];
-type DBValueBase = string | number | boolean | Date | undefined;
+type DBValueBase = string | number | boolean | Date | undefined | null;
 type Keys<T> = Extract<keyof T, string>;
 
 export type CollectionConstraint = { id: string; [key: string]: DBValue };
@@ -118,7 +118,7 @@ export function joinQueries(queries: DBQuery[], separator?: DBQuery): DBQuery {
 }
 
 class Collection<T extends CollectionConstraint> {
-	private loader: DataLoader<T['id'], T | undefined>;
+	private loader: DataLoader<T['id'], T | null>;
 	name: Column;
 	fields: { [P in keyof T]: Column };
 	constructor(public collectionName: string, private query: QueryFun) {
@@ -130,21 +130,21 @@ class Collection<T extends CollectionConstraint> {
 	}
 	private async loadById(ids: T['id'][]) {
 		const rows = await this.findAll({ id: { in: ids } } as Where<T>);
-		return ids.map(id => rows.find(row => row.id === id));
+		return ids.map(id => rows.find(row => row.id === id) || null);
 	}
 	async findById<K extends Keys<T> = never>(id: T['id'], other?: { select?: K[] }) {
 		const row = await this.findByIdOrNull(id, other);
-		if (row === undefined) throw new Exception('EntityNotFound', { collection: this.collectionName, id });
+		if (row === null) throw new Exception('EntityNotFound', { collection: this.collectionName, id });
 		return row;
 	}
 	async findByIdClient<K extends Keys<T> = never>(id: T['id'], other?: { select?: K[] }) {
 		const row = await this.findByIdOrNull(id, other);
-		if (row === undefined) throw new ClientException('EntityNotFound', { collection: this.collectionName, id });
+		if (row === null) throw new ClientException('EntityNotFound', { collection: this.collectionName, id });
 		return row;
 	}
 	async findOne<K extends Keys<T> = never, CF extends string = never>(where: WhereOr<T>, other?: Other<T, K, CF>) {
 		const row = await this.findOneOrNull(where, other);
-		if (row === undefined) throw new Exception('EntityNotFound', { collection: this.collectionName, where });
+		if (row === null) throw new Exception('EntityNotFound', { collection: this.collectionName, where });
 		return row;
 	}
 	async findOneClient<K extends Keys<T> = never, CF extends string = never>(
@@ -152,7 +152,7 @@ class Collection<T extends CollectionConstraint> {
 		other?: Other<T, K, CF>,
 	) {
 		const row = await this.findOneOrNull(where, other);
-		if (row === undefined) throw new ClientException('EntityNotFound', { collection: this.collectionName, where });
+		if (row === null) throw new ClientException('EntityNotFound', { collection: this.collectionName, where });
 		return row;
 	}
 	async findAll<K extends Keys<T> = never, CF extends string = ''>(where: WhereOr<T>, other: Other<T, K, CF> = {}) {
@@ -164,12 +164,12 @@ class Collection<T extends CollectionConstraint> {
 	}
 	async findByIdOrNull<K extends Keys<T> = never>(id: T['id'], other: { select?: K[] } = {}) {
 		try {
-			if (BigInt(id) === 0n) return;
+			if (BigInt(id) === 0n) return null;
 		} catch (e) {
-			return;
+			return null;
 		}
 		if (other.select === undefined || other.select.length === 0) {
-			return this.loader.load(id) as Promise<QueryResult<T, K, never> | undefined>;
+			return this.loader.load(id) as Promise<QueryResult<T, K, never> | null>;
 		}
 		return this.findOneOrNull({ id } as Where<T>, other);
 	}
@@ -179,7 +179,7 @@ class Collection<T extends CollectionConstraint> {
 	) {
 		other.limit = 1;
 		const rows = await this.findAll(where, other);
-		return rows.length > 0 ? rows[0] : undefined;
+		return rows.length > 0 ? rows[0] : null;
 	}
 	async update(id: T['id'], data: { [P in keyof T]?: T[P] | DBQuery | (T[P] extends number ? NumberUpdate : never) }) {
 		const values: DBQuery[] = [];
