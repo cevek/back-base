@@ -1,11 +1,6 @@
 if (+process.versions.node.replace(/\.\d+$/, '') < 12)
 	throw new Error(`Required version of node: >=12, current: ${process.versions.node}`);
 
-import dotenv from 'dotenv';
-export const ENV = process.env.NODE_ENV || 'development';
-const envFiles = ['.env', '.env.local', '.env.' + ENV, '.env.' + ENV + '.local'];
-envFiles.forEach(path => Object.assign(process.env, dotenv.config({ path }).parsed));
-
 import cors from 'cors';
 import 'deps-check';
 import Express from 'express';
@@ -26,7 +21,7 @@ import { ClientException, logger, Exception } from './logger';
 import { Pool } from 'pg';
 import findUp from 'find-up';
 import { sleep } from './utils';
-import * as diskusage from 'diskusage';
+// import * as diskusage from 'diskusage';
 
 export * from './di';
 export * from './graphQLUtils';
@@ -39,6 +34,7 @@ export * from './assert';
 export * from './logger';
 export const bodyParser = bodyparser;
 
+export const ENV = process.env.NODE_ENV || 'development';
 export const PRODUCTION = ENV === 'production';
 
 interface Options {
@@ -288,19 +284,19 @@ setInterval(() => {
 	prevCpuUsage = cpu;
 }, SYSTEM_HEALTH_INTERVAL).unref();
 
-const MIN_AVAILABLE_DISK_SPACE = 1024 ** 3;
+// const MIN_AVAILABLE_DISK_SPACE = 1024 ** 3;
 
 function checkFreeSpace() {
-	diskusage
-		.check('/')
-		.then(res => {
-			if (res.available < MIN_AVAILABLE_DISK_SPACE) {
-				const availableSpace = round(res.available / 1024 ** 2, 50) + ' MB';
-				logger.warn('Low available disk space', { availableSpace });
-			}
-		})
-		.catch(err => logger.error(err));
-	setTimeout(checkFreeSpace, 600_000).unref();
+	// diskusage
+	// 	.check('/')
+	// 	.then(res => {
+	// 		if (res.available < MIN_AVAILABLE_DISK_SPACE) {
+	// 			const availableSpace = round(res.available / 1024 ** 2, 50) + ' MB';
+	// 			logger.warn('Low available disk space', { availableSpace });
+	// 		}
+	// 	})
+	// 	.catch(err => logger.error(err));
+	// setTimeout(checkFreeSpace, 600_000).unref();
 }
 checkFreeSpace();
 
