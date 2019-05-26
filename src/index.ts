@@ -1,5 +1,5 @@
-if (+process.versions.node.replace(/\.\d+$/, '') < 11)
-	throw new Error(`Required version of node: >=11, current: ${process.versions.node}`);
+if (+process.versions.node.replace(/\.\d+$/, '') < 12)
+	throw new Error(`Required version of node: >=12, current: ${process.versions.node}`);
 
 import dotenv from 'dotenv';
 export const ENV = process.env.NODE_ENV || 'development';
