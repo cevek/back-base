@@ -2,11 +2,13 @@ import _ from 'lodash';
 
 export function mergeWithEnvConfigs<T>(resolver: (path: string) => string, configFiles: string[], config: T): T {
 	for (const file of configFiles) {
+		let filename;
 		try {
-			_.merge(config, require(resolver(file)).default);
+			filename = resolver(file);
 		} catch (e) {
-			if ((e as { code?: string }).code !== 'MODULE_NOT_FOUND') throw e;
+			continue;
 		}
+		_.merge(config, require(filename).default);
 	}
 	return config;
 }
