@@ -243,11 +243,11 @@ type NumberUpdate = { increment: number } | { decrement: number };
 
 function isIncrement(val: unknown): val is { increment: number } {
 	// eslint-disable-next-line
-	return typeof val === 'object' && typeof (val as { increment: number }).increment === 'number';
+	return typeof val === 'object' && val !== null && typeof (val as { increment: number }).increment === 'number';
 }
 function isDecrement(val: unknown): val is { decrement: number } {
 	// eslint-disable-next-line
-	return typeof val === 'object' && typeof (val as { decrement: number }).decrement === 'number';
+	return typeof val === 'object' && val !== null && typeof (val as { decrement: number }).decrement === 'number';
 }
 
 function prepareFields(
