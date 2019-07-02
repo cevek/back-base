@@ -1,4 +1,4 @@
-import {QueryParameters, RootResolver, removeItemOrNever, Return, service, ClientException, fromPromise} from 'backend-base';
+import {QueryParameters, RootResolver, removeItemOrNever, Return, ClientException, fromPromise} from 'backend-base';
 import {TodoID, TodoListID, User} from './DBSchema';
 import {Errors} from './Errors';
 import {Account, Mutation, Query, Todo, TodoList} from './GraphQLSchema';
@@ -43,7 +43,7 @@ const PASS_REGEXP = /^.{5,128}$/;
 
 async function login(args: Params['login'], ctx: Context) {
     if (ctx.session.user) throw new ClientException(Errors.YouAreAlreadyLogged);
-    const user = await service(DB).user.findOne({
+    const user = await DB.instance.user.findOne({
         login: args.login,
         password: args.password,
     });
@@ -59,7 +59,7 @@ async function logout(_: {}, ctx: ContextWithUser) {
 async function register(args: Params['register'], ctx: Context) {
     if (ctx.session.user) throw new ClientException(Errors.YouAreAlreadyLogged);
     let userExist;
-    const db = service(DB);
+    const db = DB.instance;
     try {
         userExist = await db.user.findOne({login: args.login});
     } catch (e) {}
@@ -86,7 +86,7 @@ async function getTodoLists(_: {}, ctx: ContextWithUser) {
 }
 
 async function createTodoList(args: Params['createTodoList'], ctx: ContextWithUser) {
-    const db = service(DB);
+    const db = DB.instance;
     const user = ctx.session.user;
     const id = db.todoList.genId();
     await db.todoList.create({
@@ -101,7 +101,7 @@ async function createTodoList(args: Params['createTodoList'], ctx: ContextWithUs
 }
 
 async function updateTodo(args: Params['updateTodo'], ctx: ContextWithUser) {
-    const db = service(DB);
+    const db = DB.instance;
     const todo = await db.todo.findById(args.id);
     await db.todoList.findOne({id: todo.todoListId, userId: ctx.session.user.id});
     await db.todo.update(args.id, {completed: args.completed, title: args.title});
@@ -109,7 +109,7 @@ async function updateTodo(args: Params['updateTodo'], ctx: ContextWithUser) {
 }
 
 async function removeTodo(args: Params['removeTodo'], ctx: ContextWithUser) {
-    const db = service(DB);
+    const db = DB.instance;
     await db.transaction(async trx => {
         const todo = await trx.todo.findById(args.id);
         const todoList = await trx.todoList.findOne({
@@ -125,7 +125,7 @@ async function removeTodo(args: Params['removeTodo'], ctx: ContextWithUser) {
 }
 
 async function createTodo(args: Params['createTodo'], ctx: ContextWithUser) {
-    const db = service(DB);
+    const db = DB.instance;
     const todoList = await db.todoList.findOne({id: args.todoListId, userId: ctx.session.user.id});
     const id = db.todo.genId();
     await db.transaction(async trx => {
@@ -141,7 +141,7 @@ async function createTodo(args: Params['createTodo'], ctx: ContextWithUser) {
 }
 
 async function getTodo(id: TodoID): Return<Todo> {
-    const db = service(DB);
+    const db = DB.instance;
     const todo = await db.todo.findById(id);
     return {
         id: todo.id,
@@ -151,7 +151,7 @@ async function getTodo(id: TodoID): Return<Todo> {
 }
 
 async function getTodoList(id: TodoListID, ctx: ContextWithUser): Return<TodoList> {
-    const db = service(DB);
+    const db = DB.instance;
     const todoList = await db.todoList.findOne({
         id: id,
         userId: ctx.session.user.id,

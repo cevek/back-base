@@ -1,5 +1,8 @@
-import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
-
+import { GraphQLScalarType, Kind, GraphQLError, validateSchema } from 'graphql';
+import Express from 'express';
+import graphqlHTTP from 'express-graphql';
+import { createSchema } from 'ts2graphql';
+import { handleError } from './errors';
 export type RootResolver<T, Context> = {
 	[P in keyof T]: T[P] extends (args: infer Args) => infer R ? (args: Args, ctx: Context) => Return<R> : never
 };
@@ -48,3 +51,45 @@ export const graphQLBigintTypeFactory = (typeName: string) => {
 		return value;
 	}
 };
+
+function graphQLErrorHandler(_: Express.Request, res: Express.Response, next: () => void) {
+	const sendJson = res.json.bind(res);
+	res.json = (json: { errors?: unknown[] }) => {
+		if (json && json.errors) {
+			json.errors = (json.errors as { originalError?: Error }[]).map(graphqlError => {
+				const originalError = graphqlError.originalError || (graphqlError as Error);
+				if (originalError instanceof GraphQLError) {
+					return originalError;
+				}
+				const { error, status } = handleError(originalError);
+				res.statusCode = status;
+				return error;
+			});
+		}
+		return sendJson(json);
+	};
+	next();
+}
+export function createGraphQLMiddleware(data: { resolver: object; schema: string }) {
+	const schema = createSchema(data.schema, {
+		customScalarFactory: type =>
+			type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
+	});
+	validateSchema(schema).forEach(err => {
+		throw err;
+	});
+
+	return {
+		beforeEach: graphQLErrorHandler,
+		get: graphqlHTTP({
+			schema: schema,
+			rootValue: data.resolver,
+			graphiql: true,
+		}),
+		post: graphqlHTTP({
+			schema,
+			rootValue: data.resolver,
+			...{ customFormatErrorFn: (err: Error) => err },
+		}),
+	};
+}

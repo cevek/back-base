@@ -13,7 +13,6 @@ export interface DBOptions {
 		createIfNotExists?: boolean;
 	};
 	schema: string;
-	errorEntityNotFound: unknown;
 }
 
 export async function dbInit<DBSchema extends SchemaConstraint>(projectDir: string, options: DBOptions) {

@@ -1,37 +1,34 @@
 if (+process.versions.node.replace(/\.\d+$/, '') < 12)
 	throw new Error(`Required version of node: >=12, current: ${process.versions.node}`);
 
+import * as bodyparser from 'body-parser';
 import cors from 'cors';
 import 'deps-check';
 import Express from 'express';
-import graphqlHTTP from 'express-graphql';
 import session, { SessionOptions } from 'express-session';
-import { GraphQLError, validateSchema } from 'graphql';
-import { dirname } from 'path';
-import { createSchema } from 'ts2graphql';
-import { dbInit, DBOptions } from './dbInit';
-import { graphQLBigintTypeFactory } from './graphQLUtils';
-import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
-import * as bodyparser from 'body-parser';
-import serveStatic from 'serve-static';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import https from 'https';
-import http from 'http';
-import { ClientException, logger, Exception } from './logger';
-import { Pool } from 'pg';
 import findUp from 'find-up';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import http from 'http';
+import https from 'https';
+import { dirname } from 'path';
+import { Pool } from 'pg';
+import serveStatic from 'serve-static';
+import { dbInit, DBOptions } from './dbInit';
+import { handleError } from './errors';
+import { Exception, logger } from './logger';
+import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
+import { makeRoutes, Route, getActiveThreadsCount } from './router';
 import { sleep } from './utils';
-// import * as diskusage from 'diskusage';
 
-export * from './di';
+export * from './assert';
+export * from './dateUtils';
+export * from './service';
 export * from './graphQLUtils';
+export * from './logger';
 export * from './Orm/PostgresqlDriver';
 export * from './request';
 export * from './testUtils';
 export * from './utils';
-export * from './dateUtils';
-export * from './assert';
-export * from './logger';
 export const bodyParser = bodyparser;
 
 export const ENV = process.env.NODE_ENV || 'development';
@@ -45,10 +42,6 @@ interface Options {
 	};
 	session?: SessionOptions;
 	db?: DBOptions;
-	graphql: {
-		schema: string;
-		resolver: object;
-	};
 	static?: {
 		rootDir: string;
 		options?: serveStatic.ServeStaticOptions;
@@ -56,9 +49,7 @@ interface Options {
 	parcel?: {
 		indexFilename: string;
 	};
-	errors: {
-		unknown: unknown;
-	};
+	routes: Route;
 	port: number;
 }
 
@@ -71,10 +62,7 @@ interface Result<DBSchema extends SchemaConstraint> {
 }
 
 let EXITING = false;
-export async function createGraphqApp<DBSchema extends SchemaConstraint>(
-	options: Options,
-	runMiddlewares?: (app: Result<DBSchema>) => Promise<void>,
-): Promise<Result<DBSchema>> {
+export async function createApp<DBSchema extends SchemaConstraint>(options: Options): Promise<Result<DBSchema>> {
 	let db: BaseDB<DBSchema> | undefined;
 	let dbPool: Pool | undefined;
 	try {
@@ -123,60 +111,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 			express.use(bundler.middleware());
 		}
 
-		const schema = createSchema(options.graphql.schema, {
-			customScalarFactory: type =>
-				type.type === 'string' && type.rawType !== undefined ? graphQLBigintTypeFactory(type.rawType) : undefined,
-		});
-		// console.log(printSchema(schema));
-		validateSchema(schema).forEach(err => {
-			throw err;
-		});
-
-		function handleError(error: Error) {
-			logger.error(error);
-			if (error instanceof ClientException) {
-				return { error: error.name, status: 400 };
-			}
-			debugger;
-			/* istanbul ignore next */
-			return { error: options.errors.unknown, status: 500 };
-		}
-
-		// console.log(printSchema(schema));
-		express.get(
-			'/api/graphql',
-			graphqlHTTP({
-				schema: schema,
-				rootValue: options.graphql.resolver,
-				graphiql: true,
-			}),
-		);
-		express.post(
-			'/api/graphql',
-			(_req, res, next) => {
-				const sendJson = res.json.bind(res);
-				res.json = (json: { errors?: unknown[] }) => {
-					if (json && json.errors) {
-						json.errors = (json.errors as { originalError?: Error }[]).map(graphqlError => {
-							const originalError = graphqlError.originalError || (graphqlError as Error);
-							if (originalError instanceof GraphQLError) {
-								return originalError;
-							}
-							const { error, status } = handleError(originalError);
-							res.statusCode = status;
-							return error;
-						});
-					}
-					return sendJson(json);
-				};
-				next();
-			},
-			graphqlHTTP({
-				schema: schema,
-				rootValue: options.graphql.resolver,
-				...{ customFormatErrorFn: (err: Error) => err },
-			}),
-		);
+		makeRoutes(express, options.routes, 'all', '/', []);
 
 		const server = options.https
 			? https.createServer(
@@ -197,10 +132,6 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 			db: db!,
 			dbPool: dbPool!,
 		};
-
-		if (runMiddlewares) {
-			await runMiddlewares(result);
-		}
 
 		/* istanbul ignore next */
 		express.use((err: any, _: Express.Request, res: Express.Response, next: Express.NextFunction) => {
@@ -227,19 +158,10 @@ const projectDir = dirname(packageJsonFile);
 
 const initFile = projectDir + '/.status';
 
-let activeThreadsCount = 0;
-export function asyncThread(fn: (req: Express.Request, res: Express.Response) => Promise<unknown>): Express.Handler {
-	return (req, res, next) => {
-		activeThreadsCount++;
-		fn(req, res)
-			.then(ret => res.send(ret || { status: 'ok' }), next)
-			.finally(() => activeThreadsCount--);
-	};
-}
-
 let lastExitRequestTime = 0;
 [`SIGINT`, `SIGUSR1`, `SIGUSR2`, `SIGTERM`].forEach(eventType => {
 	process.on(eventType as 'exit', async code => {
+		const activeThreadsCount = getActiveThreadsCount();
 		// console.log('exit', {now: Date.now(), lastExitRequestTime, EXITING});
 		if (EXITING && Date.now() - lastExitRequestTime < 10) return;
 		if (EXITING) {

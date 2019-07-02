@@ -6,7 +6,8 @@
 	"types": "dist/index",
 	"scripts": {
 		"lint": "tsc --noEmit && eslint src/**/*.ts",
-		"prepublishOnly": "npm run lint && rm -rf dist && tsc -p tsconfig.src.json"
+		"prepublishOnly": "npm run lint && rm -rf dist && tsc -p tsconfig.src.json",
+		"watch": "tsc -p tsconfig.src.json -w"
 	},
 	"husky": {
 		"hooks": {
