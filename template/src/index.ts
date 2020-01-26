@@ -11,6 +11,7 @@ async function main() {
             secret: config.secret,
         },
         graphql: {
+            url: '/api/graphql',
             schema: require.resolve('./GraphQLSchema.d.ts'),
             resolver: graphQLResolver,
         },

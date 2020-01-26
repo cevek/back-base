@@ -1,6 +1,6 @@
 {
 	"name": "backend-base",
-	"version": "1.0.39",
+	"version": "1.0.40",
 	"description": "",
 	"main": "dist/index",
 	"types": "dist/index",
@@ -31,6 +31,7 @@
 		"*.js"
 	],
 	"dependencies": {
+		"@google-cloud/logging": "^7.0.0",
 		"@types/body-parser": ">=1.17.0",
 		"@types/bunyan": ">=1.8.6",
 		"@types/cors": ">=2.8.5",

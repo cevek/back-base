@@ -6,11 +6,14 @@ import colors from 'colors';
 import findUp from 'find-up';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import nodemailer from 'nodemailer';
+import { Logging as GoogleStackDriver, LoggingOptions as GoogleStackDriverOptions } from '@google-cloud/logging';
+import { never } from './utils';
 
 export class BaseException<T> extends Error {
 	kind: string;
 	constructor(public name: string, public json = {} as T) {
 		super();
+		// eslint-disable-next-line @typescript-eslint/tslint/config
 		this.kind = new.target.name;
 	}
 }
@@ -23,6 +26,7 @@ type Levels = keyof typeof levels;
 type LoggerStreamConfig =
 	| { level: Levels; type: 'file'; file: string; rotate?: 'daily' }
 	| { level: Levels; type: 'stdout' }
+	| { level: Levels; type: 'stackdriver'; options: GoogleStackDriverOptions; logName: string }
 	| {
 			level: Levels;
 			type: 'email';
@@ -52,6 +56,9 @@ export class Logger {
 			}
 			if (streamConfig.type === 'email') {
 				logger.streams.push(new EmailStream(level, streamConfig));
+			}
+			if (streamConfig.type === 'stackdriver') {
+				logger.streams.push(new StackDriverStream(level, streamConfig.logName, streamConfig.options));
 			}
 		}
 	}
@@ -98,6 +105,7 @@ export class Logger {
 			}
 			return this.log('error', error.constructor.name, error);
 		}
+		// eslint-disable-next-line @typescript-eslint/tslint/config
 		if (typeof name !== 'string') {
 			return this.log('error', 'Raw error', (name as {}) instanceof Object ? name : { error: name });
 		}
@@ -141,7 +149,7 @@ class EmailStream extends LoggerStream {
 				subject,
 				text,
 			})
-			.catch(err => logger.error(err));
+			.catch((err: Error) => logger.error(err));
 	}
 
 	write(_id: string, _parentId: string, date: Date, type: Levels, name: string, json: object): void {
@@ -212,14 +220,30 @@ class StdoutStream extends LoggerStream {
 		if (type === 'external') fn = colors.magenta;
 		if (type === 'clientError') fn = colors.green;
 		const dtS =
-			('0' + date.getHours()).substr(-2) +
+			`0${date.getHours()}`.substr(-2) +
 			':' +
-			('0' + date.getMinutes()).substr(-2) +
+			`0${date.getMinutes()}`.substr(-2) +
 			':' +
-			('0' + date.getSeconds()).substr(-2);
+			`0${date.getSeconds()}`.substr(-2);
 		process.stdout.write(
 			colors.gray(dtS + ' ' + type + ' ') + fn(name + ' ') + colors.gray(JSON.stringify(json, jsonReplacer, 2) + '\n'),
 		);
+	}
+}
+class StackDriverStream extends LoggerStream {
+	protected log = new GoogleStackDriver(this.options).log(this.logName);
+	constructor(level: number, protected logName: string, protected options: GoogleStackDriverOptions) {
+		super(level);
+	}
+	write(_id: string, _parentId: string, _date: Date, type: Levels, name: string, json: object) {
+		const entry = this.log.entry(json, name);
+		if (type === 'error') return this.log.error(entry);
+		if (type === 'info') return this.log.info(entry);
+		if (type === 'warn') return this.log.warning(entry);
+		if (type === 'trace') return this.log.info(entry);
+		if (type === 'external') return this.log.warning(entry);
+		if (type === 'clientError') return this.log.notice(entry);
+		never(type);
 	}
 }
 

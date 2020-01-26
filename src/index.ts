@@ -14,14 +14,13 @@ import { graphQLBigintTypeFactory } from './graphQLUtils';
 import { BaseDB, SchemaConstraint } from './Orm/PostgresqlDriver';
 import * as bodyparser from 'body-parser';
 import serveStatic from 'serve-static';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync } from 'fs';
 import https from 'https';
 import http from 'http';
 import { ClientException, logger, Exception } from './logger';
 import { Pool } from 'pg';
 import findUp from 'find-up';
 import { sleep } from './utils';
-// import * as diskusage from 'diskusage';
 
 export * from './di';
 export * from './graphQLUtils';
@@ -46,6 +45,7 @@ interface Options {
 	session?: SessionOptions;
 	db?: DBOptions;
 	graphql: {
+		url: string;
 		schema: string;
 		resolver: object;
 	};
@@ -117,6 +117,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 		}
 		if (options.parcel) {
 			const Bundler = require('parcel-bundler');
+			// eslint-disable-next-line @typescript-eslint/tslint/config
 			const bundler = new Bundler(options.parcel.indexFilename, { cache: false }) as {
 				middleware(): Express.RequestHandler;
 			};
@@ -144,7 +145,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 
 		// console.log(printSchema(schema));
 		express.get(
-			'/api/graphql',
+			options.graphql.url,
 			graphqlHTTP({
 				schema: schema,
 				rootValue: options.graphql.resolver,
@@ -152,7 +153,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 			}),
 		);
 		express.post(
-			'/api/graphql',
+			options.graphql.url,
 			(_req, res, next) => {
 				const sendJson = res.json.bind(res);
 				res.json = (json: { errors?: unknown[] }) => {
@@ -203,7 +204,7 @@ export async function createGraphqApp<DBSchema extends SchemaConstraint>(
 		}
 
 		/* istanbul ignore next */
-		express.use((err: any, _: Express.Request, res: Express.Response, next: Express.NextFunction) => {
+		express.use((err: Error, _: Express.Request, res: Express.Response, next: Express.NextFunction) => {
 			const { error, status } = handleError(err);
 			if (res.headersSent) {
 				return next(err);
@@ -225,12 +226,11 @@ const packageJsonFile = findUp.sync('package.json', { cwd: require.main!.filenam
 if (!packageJsonFile) throw new Exception('package.json is not found');
 const projectDir = dirname(packageJsonFile);
 
-const initFile = projectDir + '/.status';
-
 let activeThreadsCount = 0;
 export function asyncThread(fn: (req: Express.Request, res: Express.Response) => Promise<unknown>): Express.Handler {
 	return (req, res, next) => {
 		activeThreadsCount++;
+		// eslint-disable-next-line @typescript-eslint/tslint/config
 		fn(req, res)
 			.then(ret => res.send(ret || { status: 'ok' }), next)
 			.finally(() => activeThreadsCount--);
@@ -244,7 +244,6 @@ let lastExitRequestTime = 0;
 		if (EXITING && Date.now() - lastExitRequestTime < 10) return;
 		if (EXITING) {
 			logger.warn('Force Exit Double SIGINT', { activeThreadsCount });
-			writeFileSync(initFile, 'ok');
 			process.exit();
 		}
 		lastExitRequestTime = Date.now();
@@ -263,49 +262,9 @@ let lastExitRequestTime = 0;
 		} else {
 			logger.warn('Force Exit', { activeThreadsCount });
 		}
-		writeFileSync(initFile, 'ok');
 		process.exit();
 	});
 });
-
-function round(val: number, round: number) {
-	return Math.round(val / round) * round;
-}
-let prevCpuUsage = process.cpuUsage();
-const SYSTEM_HEALTH_INTERVAL = 600_000;
-setInterval(() => {
-	const mem = process.memoryUsage();
-	const cpu = process.cpuUsage();
-	const cpuSum = cpu.system - prevCpuUsage.system + (cpu.user - prevCpuUsage.user);
-	const cpuUsage = round((cpuSum / (SYSTEM_HEALTH_INTERVAL * 1000)) * 100, 1) + '%';
-	const headUsage = round(mem.heapUsed / 1024 ** 2, 50) + ' MB';
-	const rss = round(mem.rss / 1024 ** 2, 50) + ' MB';
-	logger.info('System health', { headUsage, rss, cpuUsage });
-	prevCpuUsage = cpu;
-}, SYSTEM_HEALTH_INTERVAL).unref();
-
-// const MIN_AVAILABLE_DISK_SPACE = 1024 ** 3;
-
-function checkFreeSpace() {
-	// diskusage
-	// 	.check('/')
-	// 	.then(res => {
-	// 		if (res.available < MIN_AVAILABLE_DISK_SPACE) {
-	// 			const availableSpace = round(res.available / 1024 ** 2, 50) + ' MB';
-	// 			logger.warn('Low available disk space', { availableSpace });
-	// 		}
-	// 	})
-	// 	.catch(err => logger.error(err));
-	// setTimeout(checkFreeSpace, 600_000).unref();
-}
-checkFreeSpace();
-
-if (existsSync(initFile) && readFileSync(initFile, 'utf8') !== 'ok') {
-	setTimeout(() => {
-		logger.warn('Last program was killed');
-	});
-}
-writeFileSync(initFile, '');
 
 process.on('unhandledRejection', reason => logger.warn('Unhandled Promise rejection', { reason }));
 process.on('uncaughtException', err => logger.error('UncaughtException', err));
