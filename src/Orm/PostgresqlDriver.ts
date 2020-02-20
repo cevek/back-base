@@ -163,11 +163,6 @@ class Collection<T extends CollectionConstraint> {
 		);
 	}
 	async findByIdOrNull<K extends Keys<T> = never>(id: T['id'], other: { select?: K[] } = {}) {
-		try {
-			if (BigInt(id) === 0n) return null;
-		} catch (e) {
-			return null;
-		}
 		if (other.select === undefined || other.select.length === 0) {
 			return this.loader.load(id) as Promise<QueryResult<T, K, never> | null>;
 		}
