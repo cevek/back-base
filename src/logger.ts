@@ -237,7 +237,7 @@ class StackDriverStream extends LoggerStream {
 	}
 	write(_id: string, _parentId: string, _date: Date, type: Levels, name: string, json: object) {
 		const preparedJson = JSON.parse(JSON.stringify(json, jsonReplacer)) as {};
-		const entry = this.log.entry([name, preparedJson]);
+		const entry = this.log.entry({ name: name, data: preparedJson });
 		if (type === 'error') return this.log.error(entry);
 		if (type === 'info') return this.log.info(entry);
 		if (type === 'warn') return this.log.warning(entry);
